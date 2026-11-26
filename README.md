@@ -78,6 +78,11 @@ docs/          PRD, architecture, privacy, and test-result documentation.
 
 ## Local setup
 
+Phase 1 Developer A work needs Node.js and pnpm only. The Python setup below is
+needed when running Developer B's speech sidecar or harness. Current status: the
+tray shell, contracts, and sample transcript player are implemented; live capture,
+transcription, saved meetings, and AI notes are not implemented yet.
+
 ```powershell
 pnpm install
 python -m venv .venv
@@ -87,7 +92,16 @@ Copy-Item .env.example .env
 pnpm dev
 ```
 
-`pnpm dev` will eventually start Electron and the local transcription sidecar. The initial scaffold intentionally contains no recording implementation yet; the first implementation gate is two clean WAV files from a real call, one per source.
+For the current desktop shell, run `pnpm install` and `pnpm dev`. Click Play sample
+to replay written transcript fixtures. Closing the window hides it in the tray;
+Open Library restores it and Quit exits. Recording tray controls are disabled until
+Phase 2. `pnpm dev` currently starts Electron only, without a Python sidecar.
+
+Use `pnpm icons` to regenerate the temporary application/tray icon. `pnpm package:win`
+builds an unsigned NSIS installer and portable executable under `release/`.
+The current package contains the Phase 1 shell; sidecar/model packaging will be
+added when Developer B supplies those artifacts. See [Phase 1 contracts](docs/phase-1-contracts.md)
+for the integration proposal and completion checks.
 
 ## Scripts
 
@@ -98,6 +112,7 @@ pnpm dev
 | `pnpm test` | Run renderer/main-process unit tests. |
 | `pnpm build` | Produce application bundles. |
 | `pnpm package:win` | Build the Windows installer and portable package. |
+| `pnpm smoke:win "D:\path\to\Vinxa Desktop.exe"` | Exercise the packaged shell, sample player, single instance, and quit. |
 | `pytest sidecar harness` | Run sidecar and harness tests. |
 
 ## Privacy and data handling

@@ -1,17 +1,18 @@
 appId: com.vinxa.desktop
 productName: Vinxa Desktop
 directories:
-  buildResources: build
+  buildResources: resources
   output: release
 files:
   - out/**/*
   - package.json
 extraResources:
-  - from: sidecar/dist
-    to: sidecar
-    filter:
-      - "**/*"
+  - from: resources/tray.ico
+    to: tray.ico
+asarUnpack:
+  - "**/*.node"
 win:
+  icon: resources/tray.ico
   target:
     - target: nsis
       arch:
