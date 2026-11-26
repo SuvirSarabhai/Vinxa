@@ -15,6 +15,10 @@ from sidecar.protocol import validate
 from sidecar.server import SidecarServer
 
 
+def transport_server(*args, **kwargs):
+    return SidecarServer(*args, pipeline_factory=None, **kwargs)
+
+
 def config(server, token):
     return dict(type="config", protocolVersion=1, sessionId=server.session_id,
                 generation=server.generation, token=token, sampleRate=16000,
@@ -27,8 +31,8 @@ def control(server, kind="ping", **overrides):
             "requestId": str(uuid.uuid4()), **overrides}
 
 
-async def receive(socket):
-    return validate("event", json.loads(await asyncio.wait_for(socket.recv(), 2)))
+async def receive(socket, timeout=2):
+    return validate("event", json.loads(await asyncio.wait_for(socket.recv(), timeout)))
 
 
 async def authenticated(server, token):
@@ -41,7 +45,7 @@ async def authenticated(server, token):
 def test_bind_config_health_stop_and_cleanup():
     async def run():
         token = secrets.token_hex(32)
-        server = SidecarServer(token, str(uuid.uuid4()), 0)
+        server = transport_server(token, str(uuid.uuid4()), 0)
         async with server:
             assert all(s.getsockname()[0] == "127.0.0.1" for s in server._server.sockets)
             assert server.port > 0
@@ -66,7 +70,7 @@ def test_authentication_rejections(case):
     async def run():
         token = secrets.token_hex(32)
         now = [0.0]
-        async with SidecarServer(token, str(uuid.uuid4()), 0, clock=lambda: now[0]) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0, clock=lambda: now[0]) as server:
             payload = config(server, token)
             expected = "AUTH_FAILED"
             if case == "wrong-token":
@@ -98,7 +102,7 @@ def test_authentication_rejections(case):
 
 def test_auth_deadline():
     async def run():
-        async with SidecarServer(secrets.token_hex(32), str(uuid.uuid4()), 0, auth_timeout=0.03) as server:
+        async with transport_server(secrets.token_hex(32), str(uuid.uuid4()), 0, auth_timeout=0.03) as server:
             async with connect(f"ws://127.0.0.1:{server.port}", proxy=None) as socket:
                 assert (await receive(socket))["code"] == "AUTH_FAILED"
                 await socket.wait_closed()
@@ -108,7 +112,7 @@ def test_auth_deadline():
 def test_single_owner_and_revocation_on_disconnect():
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             first = await authenticated(server, token)
             async with connect(f"ws://127.0.0.1:{server.port}", proxy=None) as other:
                 await other.send(json.dumps(config(server, token)))
@@ -128,7 +132,7 @@ def test_single_owner_and_revocation_on_disconnect():
 def test_invalid_binary_frames_after_auth(payload, expected):
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             async with connect(f"ws://127.0.0.1:{server.port}", proxy=None) as socket:
                 conf = config(server, token)
                 conf["enabledSources"] = ["mic"]
@@ -144,7 +148,7 @@ def test_invalid_binary_frames_after_auth(payload, expected):
 def test_valid_audio_is_explicitly_not_ready_and_no_transcript_is_fabricated():
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             socket = await authenticated(server, token)
             for identity in (0, 1):
                 await socket.send(bytes([identity]) + bytes(3200))
@@ -160,7 +164,7 @@ def test_valid_audio_is_explicitly_not_ready_and_no_transcript_is_fabricated():
 def test_control_validation(case):
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             socket = await authenticated(server, token)
             payload = control(server)
             expected = "INVALID_CONTROL"
@@ -184,7 +188,7 @@ def test_control_validation(case):
 def test_oversized_message_transport_limit():
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             socket = await authenticated(server, token)
             await socket.send(bytes(4097))
             with pytest.raises(ConnectionClosed) as error:
@@ -212,7 +216,8 @@ def test_cli_readiness_actual_process_and_stdout_privacy():
                 assert (await receive(socket))["status"] == "starting"
                 await socket.send(json.dumps({"type": "stop", "sessionId": session_id,
                                                "generation": 0, "requestId": str(uuid.uuid4())}))
-                assert (await receive(socket))["status"] == "stopped"
+                while (await receive(socket, timeout=20)).get("status") != "stopped":
+                    pass
             stdout, stderr = await asyncio.wait_for(process.communicate(), 5)
             assert process.returncode == 0 and stdout == b"" and stderr == b""
             assert token.encode() not in line
@@ -226,7 +231,7 @@ def test_cli_readiness_actual_process_and_stdout_privacy():
 def test_concurrent_authentication_has_exactly_one_owner():
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             first, second = await asyncio.gather(*[connect(f"ws://127.0.0.1:{server.port}", proxy=None) for _ in range(2)])
             try:
                 await asyncio.gather(first.send(json.dumps(config(server, token))), second.send(json.dumps(config(server, token))))
@@ -240,11 +245,11 @@ def test_concurrent_authentication_has_exactly_one_owner():
 
 def test_unclaimed_admission_expires_and_shutdown_closes_active_client():
     async def run():
-        async with SidecarServer(secrets.token_hex(32), str(uuid.uuid4()), 0, admission_seconds=0.03) as server:
+        async with transport_server(secrets.token_hex(32), str(uuid.uuid4()), 0, admission_seconds=0.03) as server:
             await asyncio.wait_for(server.finished.wait(), 1)
             assert server.session is None
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             socket = await authenticated(server, token)
         await asyncio.wait_for(socket.wait_closed(), 1)
         assert server.session.closed and server._owner is None
@@ -254,7 +259,7 @@ def test_unclaimed_admission_expires_and_shutdown_closes_active_client():
 def test_browser_origin_and_url_credentials_rejected_without_logging(caplog):
     async def run():
         token = secrets.token_hex(32)
-        async with SidecarServer(token, str(uuid.uuid4()), 0) as server:
+        async with transport_server(token, str(uuid.uuid4()), 0) as server:
             with pytest.raises(InvalidStatus):
                 async with connect(f"ws://127.0.0.1:{server.port}", origin="https://example.invalid", proxy=None):
                     pass

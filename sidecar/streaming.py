@@ -145,9 +145,13 @@ class StreamingPipeline:
         if source is not None and source not in self.sources:
             raise ProtocolError("SOURCE_DISABLED", "Audio source is disabled")
 
-    async def anchor(self, source, sample, dropped=0):
+    async def anchor(self, source, sample, dropped=0, *, discontinuity=False):
         await self._require(source)
         state = self.sources[source]
+        if self.paused:
+            raise ProtocolError("NOT_READY", "Resume before anchoring a source", True)
+        if state.anchored and not state.ended and not discontinuity:
+            raise ProtocolError("INVALID_CONTROL", "Active source requires an explicit gap control")
         if sample < state.expected:
             raise ProtocolError("INVALID_CONTROL", "Source timeline cannot move backward")
         await self._clear_source(state, sample)

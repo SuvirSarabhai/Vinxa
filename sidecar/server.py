@@ -27,11 +27,13 @@ except Exception:
 _logger = logging.Logger("vinxa.sidecar.transport")
 _logger.addHandler(logging.NullHandler())
 _logger.propagate = False
+_DEFAULT_PIPELINE = object()
 
 
 class SidecarServer:
     def __init__(self, token: str, session_id: str, generation: int, *,
-                 auth_timeout=10.0, admission_seconds=30.0, clock=monotonic):
+                 auth_timeout=10.0, admission_seconds=30.0, clock=monotonic,
+                 pipeline_factory=_DEFAULT_PIPELINE):
         # Use the approved schema for trusted launch identity too.
         validate("control", {"type": "ping", "sessionId": session_id, "generation": generation,
                              "requestId": "00000000-0000-4000-8000-000000000001"})
@@ -49,6 +51,11 @@ class SidecarServer:
         self._expiry_task = None
         self._active = 0
         self.finished = asyncio.Event()
+        if pipeline_factory is _DEFAULT_PIPELINE:
+            from .streaming import StreamingPipeline
+            pipeline_factory = StreamingPipeline
+        self.pipeline_factory = pipeline_factory
+        self.pipeline = self._boot = None
 
     @property
     def port(self):
@@ -84,6 +91,17 @@ class SidecarServer:
                                        "sessionId": self.session_id if authenticated else None,
                                        "generation": self.generation if authenticated else None}))
 
+    async def _close_pipeline(self, flush=False):
+        if self._boot:
+            self._boot.cancel()
+            await asyncio.gather(self._boot, return_exceptions=True)
+            self._boot = None
+        if self.pipeline:
+            if flush:
+                await self.pipeline.stop()
+            else:
+                await self.pipeline.close()
+
     async def _handle(self, socket):
         if self._active >= 4:
             await socket.close(1008, "Connection limit")
@@ -110,21 +128,55 @@ class SidecarServer:
             self._consumed, self._owner, owns = True, socket, True
             self.session = Session.from_config(config)
             await socket.send(encode_event(self.session.status_event()))
+            if self.pipeline_factory is not None:
+                async def emit(event):
+                    if self.session.closed:
+                        return
+                    if event["type"] == "status":
+                        self.session.status = event["status"]
+                    await asyncio.wait_for(socket.send(encode_event(event)), 2)
+                    if event["type"] == "status" and event["status"] == "error":
+                        asyncio.create_task(socket.close(1011, "Engine unavailable"))
+                self.pipeline = self.pipeline_factory(config, emit)
+                self._boot = asyncio.create_task(self.pipeline.start())
             async for message in socket:
                 if isinstance(message, bytes):
-                    parse_frame(message, self.session.enabled_sources)
-                    # Stage 2 deliberately cannot accept or silently buffer audio yet.
-                    await self._error(socket, "NOT_READY", "Transcription pipeline is not available yet",
-                                      recoverable=True, authenticated=True)
+                    frame = parse_frame(message, self.session.enabled_sources)
+                    if self.pipeline is None or not self.pipeline.ready or self.pipeline.paused:
+                        await self._error(socket, "NOT_READY", "Transcription pipeline is not available",
+                                          recoverable=True, authenticated=True)
+                    else:
+                        try:
+                            await self.pipeline.ingest(frame)
+                        except ProtocolError as error:
+                            if not error.recoverable:
+                                raise
+                            await self._error(socket, error.code, str(error), True, True)
                     continue
                 control = parse_json(message, "control")
                 self.session.accept_control(control)
                 if control["type"] == "stop":
+                    await self._close_pipeline(flush=True)
                     self.session.close()
                     await socket.send(encode_event(self.session.status_event(control["requestId"])))
                     await socket.close(1000, "Session stopped")
                     return
                 if control["type"] == "ping":
+                    await socket.send(encode_event(self.session.status_event(control["requestId"])))
+                elif self.pipeline is not None and self.pipeline.ready:
+                    kind = control["type"]
+                    if kind in ("source-start", "source-gap"):
+                        await self.pipeline.anchor(control["source"], control["startSample"], control.get("droppedSamples", 0),
+                                                   discontinuity=kind == "source-gap")
+                        self.session.status = "listening"
+                    elif kind == "source-end":
+                        await self.pipeline.source_end(control["source"], control["paddedSamples"])
+                    elif kind == "pause":
+                        await self.pipeline.pause()
+                        self.session.status = "ready"
+                    elif kind == "resume":
+                        await self.pipeline.resume()
+                        self.session.status = "ready"
                     await socket.send(encode_event(self.session.status_event(control["requestId"])))
                 else:
                     await self._error(socket, "NOT_READY", "Audio lifecycle is not available yet",
@@ -155,6 +207,7 @@ class SidecarServer:
                 self.session.close()
                 self._owner = None
                 self._token = ""
+                await self._close_pipeline()
                 self.finished.set()
 
 
