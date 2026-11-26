@@ -23,7 +23,8 @@ Implementation and hardware verification are tracked separately below.
 | Local commit | DONE | Stage 1 is recorded as 2c8751a. Stage 2 is committed locally after automated and controlled Windows loopback tests. |
 | System audio implementation | DONE | Trusted display-capture handler grants a screen source and Windows loopback. Video track is stopped immediately. Controlled default-output tone was captured successfully. |
 | Simultaneous generated input test | DONE | node scripts/smoke-microphone.cjs both passed with two distinct 4.992-second WAVs. Each has 79,872 samples at 16 kHz, mono, 16-bit, and zero clipped samples. Windows loopback compatibility requires the manual test. |
-| Video playback and real-call dual capture | MANUAL-PENDING | Awaiting the user's playback recording and separate listening checks |
+| User system playback recording | PARTIAL | system.wav contains 293,760 samples over 18.36 seconds at 16 kHz, mono, 16-bit. RIFF and data lengths match. RMS is 0.093222. Strict validation flags 2 full-scale samples (0.000681 percent). Listening confirmation is pending. |
+| Real-call dual capture | MANUAL-PENDING | Awaiting simultaneous physical microphone and system capture and separate listening checks |
 | Speech benchmarks | MANUAL-PENDING | Later stages need implementation and approval |
 
 ## Integration and files
@@ -139,6 +140,7 @@ dependency setup succeeds.
 | Microphone unplugged during capture | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Default microphone changed during capture | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Quit while recording | Pending | Pending | Pending | Pending | MANUAL-PENDING |
+| Default output playback recording | Yes | Format and lengths valid; 2 full-scale samples flagged | Pending | WAV finalized | PARTIAL |
 | System audio through default speakers | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | System audio through headphones | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Default output changed during capture | Pending | Pending | Pending | Pending | MANUAL-PENDING |
