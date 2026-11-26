@@ -1,0 +1,3 @@
+# Python dependencies for Vinxa's local speech sidecar and validation harness.
+-r sidecar/requirements.txt
+

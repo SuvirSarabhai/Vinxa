@@ -1,0 +1,40 @@
+{
+  "name": "vinxa-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Offline-first Windows meeting memory application",
+  "main": "./out/main/index.js",
+  "author": "Vinxa Desktop Team",
+  "license": "MIT",
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package:win": "pnpm build && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "better-sqlite3": "^13.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "electron": "^45.5.0",
+    "electron-builder": "^26.0.0",
+    "electron-vite": "^6.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0"
+  }
+}
+
