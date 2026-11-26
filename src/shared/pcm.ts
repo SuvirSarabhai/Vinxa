@@ -83,9 +83,10 @@ export class PcmEncoder {
   }
 }
 
-export function validatePcmFrame(frame: unknown, source: number): asserts frame is ArrayBuffer {
+export function validatePcmFrame(frame: unknown, source?: number): asserts frame is ArrayBuffer {
   if (!(frame instanceof ArrayBuffer) || frame.byteLength !== pcmFormat.frameBytes + 1) {
     throw new Error('Expected a source byte and exactly 3200 PCM bytes')
   }
-  if (new Uint8Array(frame)[0] !== source) throw new Error('Unexpected audio source')
+  const id = new Uint8Array(frame)[0]
+  if ((id !== 0 && id !== 1) || (source !== undefined && id !== source)) throw new Error('Unexpected audio source')
 }

@@ -28,16 +28,16 @@ export class WavWriter {
   private queue = Promise.resolve()
   private pending = 0
 
-  private constructor(private readonly file: FileHandle, private readonly path: string) {}
+  private constructor(private readonly file: FileHandle, private readonly path: string, private readonly source: 0 | 1) {}
 
-  static async create(path: string): Promise<WavWriter> {
+  static async create(path: string, source: 0 | 1 = 0): Promise<WavWriter> {
     await mkdir(dirname(path), { recursive: true })
     const space = await statfs(dirname(path))
     if (space.bavail * space.bsize < reserveBytes) throw new Error('Insufficient disk space for recording')
     const file = await open(path, 'wx')
     try {
       await file.writeFile(wavHeader(0))
-      return new WavWriter(file, path)
+      return new WavWriter(file, path, source)
     } catch (error) {
       await file.close()
       throw error
@@ -45,7 +45,7 @@ export class WavWriter {
   }
 
   append(frame: ArrayBuffer): Promise<void> {
-    validatePcmFrame(frame, 0)
+    validatePcmFrame(frame, this.source)
     if (this.closed) return Promise.reject(new Error('WAV writer is closed'))
     if (this.pending >= 4) return Promise.reject(new Error('Audio writer buffer is full'))
     this.pending++

@@ -42,10 +42,13 @@ The Electron adapter will assign stable utterance ids and meeting ids and map ev
 type to isFinal before publishing a TranscriptSegment. Repeated partial/final updates
 for one utterance must preserve its startMs to support that adapter.
 
-Developer B's microphone diagnostic uses the hidden capture page and preload bridge.
+Developer B's audio diagnostic uses one hidden capture page per source and the preload bridge.
 Its channels are capture:ready, capture:frame, capture:finished, and capture:stop.
 Frames use the byte layout above. capture:frame is acknowledged after the WAV write.
 capture:finished carries a nullable error and the final frame's zero-padding count.
+Each frame sender is bound to its own source ID and WAV writer. A capture window
+selects its pipeline through the validated source query parameter. Modes are mic,
+system and both; system requests Chromium loopback and immediately stops its video track.
 See phase1-audio-capture.md for implementation status and checks.
 No sidecar server is implemented in Phase 1.
 Database schema and repositories remain Phase 3 work under Developer A.

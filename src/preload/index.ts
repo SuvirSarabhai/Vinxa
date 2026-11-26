@@ -29,7 +29,7 @@ contextBridge.exposeInMainWorld('vinxa', desktopApi)
 const captureBridge: CaptureBridge = {
   ready: () => ipcRenderer.invoke(ipcChannels.captureReady),
   frame: (frame) => {
-    validatePcmFrame(frame, 0)
+    validatePcmFrame(frame)
     return ipcRenderer.invoke(ipcChannels.captureFrame, frame)
   },
   finished: (result) => ipcRenderer.invoke(ipcChannels.captureFinished, captureFinishedSchema.parse(result)),

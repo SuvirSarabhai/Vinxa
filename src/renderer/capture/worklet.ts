@@ -5,17 +5,20 @@ declare const sampleRate: number
 declare class AudioWorkletProcessor { readonly port: MessagePort }
 declare function registerProcessor(name: string, processor: typeof AudioWorkletProcessor): void
 
-class MicrophoneProcessor extends AudioWorkletProcessor {
+class CaptureProcessor extends AudioWorkletProcessor {
   private stopped = false
   private outstanding = 0
-  private readonly encoder = new PcmEncoder(sampleRate, sourceIds.mic, (frame) => {
-    if (this.outstanding >= 4) throw new Error('Audio IPC did not keep up with capture')
-    this.outstanding++
-    this.port.postMessage({ type: 'frame', frame }, [frame])
-  })
+  private readonly encoder: PcmEncoder
 
-  constructor() {
+  constructor(options: AudioWorkletNodeOptions = {}) {
     super()
+    const source = options.processorOptions?.source ?? sourceIds.mic
+    if (source !== sourceIds.mic && source !== sourceIds.system) throw new Error('Unsupported PCM source')
+    this.encoder = new PcmEncoder(sampleRate, source, (frame) => {
+      if (this.outstanding >= 4) throw new Error('Audio IPC did not keep up with capture')
+      this.outstanding++
+      this.port.postMessage({ type: 'frame', frame }, [frame])
+    })
     this.port.onmessage = ({ data }) => {
       if (data.type === 'ack') this.outstanding--
       if (data.type === 'stop' && !this.stopped) {
@@ -43,4 +46,4 @@ class MicrophoneProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('vinxa-microphone', MicrophoneProcessor)
+registerProcessor('vinxa-capture', CaptureProcessor)

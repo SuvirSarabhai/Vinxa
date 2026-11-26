@@ -3,13 +3,13 @@ import { join } from 'node:path'
 import { FixturePlayer } from './fixture-player'
 import { ipcChannels } from '../shared/ipc-channels'
 import { fixtureCommandSchema } from '../shared/schemas'
-import { startMicrophoneTest } from './audio/microphone-test'
+import { startCaptureTest } from './audio/capture-test'
 
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
 let isQuitting = false
 let fixturePlayer: FixturePlayer | undefined
-let microphoneTest: Awaited<ReturnType<typeof startMicrophoneTest>>
+let captureTest: Awaited<ReturnType<typeof startCaptureTest>>
 
 function openLibrary(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -73,11 +73,11 @@ if (!hasLock) {
 } else {
   app.on('second-instance', openLibrary)
   app.on('before-quit', (event) => {
-    if (!isQuitting && microphoneTest) {
+    if (!isQuitting && captureTest) {
       event.preventDefault()
       isQuitting = true
       fixturePlayer?.stop()
-      void microphoneTest.stop().finally(() => app.quit())
+      void captureTest.stop().finally(() => app.quit())
       return
     }
     isQuitting = true
@@ -99,9 +99,10 @@ if (!hasLock) {
     })
     mainWindow?.webContents.on('did-start-loading', () => fixturePlayer?.stop())
     app.on('activate', openLibrary)
-    if (process.env.VINXA_CAPTURE_TEST === 'mic' && mainWindow) {
-      void startMicrophoneTest(mainWindow).then((test) => { microphoneTest = test }).catch(() => {
-        console.error('Microphone diagnostic could not start; check output file and disk space')
+    const mode = process.env.VINXA_CAPTURE_TEST
+    if ((mode === 'mic' || mode === 'system' || mode === 'both') && mainWindow) {
+      void startCaptureTest(mainWindow, mode).then((test) => { captureTest = test }).catch(() => {
+        console.error('Audio diagnostic could not start; check output file and disk space')
       })
     }
   }).catch((error: unknown) => {

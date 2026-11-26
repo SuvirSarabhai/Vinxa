@@ -109,6 +109,11 @@ before `pnpm dev`, then confirm the native recording prompt. It saves
 Run `node scripts/validate-wav.mjs test_recordings/mic.wav` to check the result.
 See [microphone capture status and test steps](docs/phase1-audio-capture.md).
 
+Use `$env:VINXA_CAPTURE_TEST='system'` for Windows loopback into `system.wav`,
+or `'both'` for separate `mic.wav` and `system.wav` files. Move previous test WAVs
+to a local archive before repeating. Play audio through Windows default output,
+and use headphones for the simultaneous test. No video is saved.
+
 ## Scripts
 
 | Command | Purpose |

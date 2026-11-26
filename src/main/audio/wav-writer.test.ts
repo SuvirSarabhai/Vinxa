@@ -57,4 +57,13 @@ describe('microphone WAV writer', () => {
     const clipped = Buffer.from(silent); clipped.writeInt16LE(32767, 44)
     expect(() => validateWav(clipped)).toThrow('full-scale')
   })
+
+  it('rejects a microphone-tagged frame sent to the system writer', async () => {
+    const writer = await WavWriter.create(await path(), 1)
+    expect(() => writer.append(frame())).toThrow('source')
+    const systemFrame = frame()
+    new Uint8Array(systemFrame)[0] = 1
+    await writer.append(systemFrame)
+    await writer.close()
+  })
 })

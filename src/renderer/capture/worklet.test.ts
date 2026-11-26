@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 
-async function processor(): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
+async function processor(source = 0): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
   const messages: any[] = []
   let Constructor: any
   class Processor {
@@ -15,7 +15,7 @@ async function processor(): Promise<{ port: { onmessage: (event: { data: unknown
   vi.stubGlobal('sampleRate', 48000)
   vi.stubGlobal('registerProcessor', (_name: string, constructor: any) => { Constructor = constructor })
   await import('./worklet')
-  return Object.assign(new Constructor(), { messages })
+  return Object.assign(new Constructor({ processorOptions: { source } }), { messages })
 }
 
 describe('AudioWorklet lifecycle', () => {
@@ -36,5 +36,14 @@ describe('AudioWorklet lifecycle', () => {
     expect(worklet.messages.filter((message) => message.type === 'frame')).toHaveLength(4)
     expect(worklet.messages.at(-1)).toEqual({ type: 'error' })
     expect(worklet.process([])).toBe(false)
+  })
+
+  it('keeps the system source tag on every frame', async () => {
+    const worklet = await processor(1)
+    for (let i = 0; i < 40; i++) worklet.process([[new Float32Array(128).fill(0.2)]])
+    worklet.port.onmessage({ data: { type: 'stop' } })
+    const frames = worklet.messages.filter((message) => message.type === 'frame')
+    expect(frames.length).toBeGreaterThan(0)
+    expect(frames.every((message) => new Uint8Array(message.frame)[0] === 1)).toBe(true)
   })
 })
