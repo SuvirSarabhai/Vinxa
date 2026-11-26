@@ -1,0 +1,4 @@
+# Protocol server only; VAD/model runtime is installed in its later stage.
+-r requirements-phase1.txt
+websockets>=14,<17
+jsonschema>=4.23,<5
