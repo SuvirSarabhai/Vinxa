@@ -9,6 +9,8 @@ files:
 extraResources:
   - from: resources/tray.ico
     to: tray.ico
+  - from: resources/audio/default-output.ps1
+    to: audio/default-output.ps1
 asarUnpack:
   - "**/*.node"
 win:

@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "measured_date": "2026-11-26",
+  "hardware": {
+    "cpu": "Intel Core i7-13620H",
+    "physical_cores": 10,
+    "logical_processors": 16,
+    "ram_gib": 15.637977600097656,
+    "os": "Windows 11 Home Single Language",
+    "build": "10.0.26300",
+    "power_plugged": true
+  },
+  "sample": {
+    "sha256": "daa0a79d8b9798f3ce7eadbfd564e58ab039892bbfb3474e05a28ef345aaa924",
+    "rate_hz": 16000,
+    "channels": 1,
+    "sample_width_bytes": 2,
+    "samples": 406741,
+    "duration_seconds": 25.4213125,
+    "full_scale_samples": 10,
+    "source": "physical microphone headphone-isolation test",
+    "reference_transcript_provided": false
+  },
+  "method_notes": [
+    "Each configuration used the identical WAV in three sequential runs; VAD off, language en, four CPU threads and beam size five.",
+    "Faster-whisper reuses one model per invocation. Inference timing consumes the segment generator; model load includes imports.",
+    "Whisper.cpp creates a fresh process per repeat. Inference is diagnostic total minus load, not identical to the faster-whisper timing boundary.",
+    "Whisper.cpp ran during final Electron packaging; final faster-whisper runs started after packaging completed.",
+    "Observed Windows process peaks use max(sampled RSS, process-lifetime peak working set); memory can include loading and earlier runs.",
+    "Short sample includes silence and ten full-scale samples. WER and qualitative transcription accuracy have not been assessed.",
+    "Exploratory earlier Python runs are excluded: power/load conditions unrecorded and memory sampling differed."
+  ],
+  "recommendation": {
+    "backend": "faster-whisper",
+    "model": "base.en",
+    "device": "cpu",
+    "compute_type": "int8",
+    "cpu_threads": 4,
+    "scope": "English demo baseline; accuracy, real-call and deployment validation pending"
+  },
+  "benchmarks": [
+    {
+      "backend": "faster-whisper",
+      "model": "base.en",
+      "device": "cpu",
+      "compute_type": "int8",
+      "cpu_threads": 4,
+      "beam_size": 5,
+      "vad_filter": false,
+      "condition_on_previous_text": false,
+      "requested_language": "en",
+      "sample_sha256": "daa0a79d8b9798f3ce7eadbfd564e58ab039892bbfb3474e05a28ef345aaa924",
+      "audio_duration_seconds": 25.4213125,
+      "audio_full_scale_samples": 10,
+      "model_load_seconds": 4.66670460000023,
+      "model_load_peak_rss_mib": 329.03125,
+      "runs": [
+        {
+          "run": 1,
+          "inference_seconds": 4.562315700000909,
+          "rtf": 0.17946814115128434,
+          "peak_rss_mib": 438.32421875,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 3,
+          "nonempty_transcript": true
+        },
+        {
+          "run": 2,
+          "inference_seconds": 4.550160799997684,
+          "rtf": 0.17899000297477496,
+          "peak_rss_mib": 439.70703125,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 3,
+          "nonempty_transcript": true
+        },
+        {
+          "run": 3,
+          "inference_seconds": 4.747235200000432,
+          "rtf": 0.18674233283590028,
+          "peak_rss_mib": 439.70703125,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 5,
+          "nonempty_transcript": true
+        }
+      ],
+      "median_inference_seconds": 4.562315700000909,
+      "median_rtf": 0.17946814115128434,
+      "median_peak_rss_mib": 439.70703125,
+      "environment": {
+        "python": "3.11.9",
+        "platform": "Windows-10-10.0.26300-SP0",
+        "logical_cpus": 16,
+        "physical_cpus": 10,
+        "ram_gib": 15.637977600097656,
+        "versions": {
+          "faster-whisper": "1.2.1",
+          "ctranslate2": "4.9.1",
+          "numpy": "2.4.6",
+          "psutil": "7.2.2"
+        }
+      },
+      "model_revision": "3d3d5dee26484f91867d81cb899cfcf72b96be6c"
+    },
+    {
+      "backend": "faster-whisper",
+      "model": "small",
+      "device": "cpu",
+      "compute_type": "int8",
+      "cpu_threads": 4,
+      "beam_size": 5,
+      "vad_filter": false,
+      "condition_on_previous_text": false,
+      "requested_language": "en",
+      "sample_sha256": "daa0a79d8b9798f3ce7eadbfd564e58ab039892bbfb3474e05a28ef345aaa924",
+      "audio_duration_seconds": 25.4213125,
+      "audio_full_scale_samples": 10,
+      "model_load_seconds": 1.6379726000013761,
+      "model_load_peak_rss_mib": 705.40234375,
+      "runs": [
+        {
+          "run": 1,
+          "inference_seconds": 5.726580000002286,
+          "rtf": 0.22526688974073572,
+          "peak_rss_mib": 946.109375,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 6,
+          "nonempty_transcript": true
+        },
+        {
+          "run": 2,
+          "inference_seconds": 5.549883100000443,
+          "rtf": 0.21831615106420815,
+          "peak_rss_mib": 946.109375,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 6,
+          "nonempty_transcript": true
+        },
+        {
+          "run": 3,
+          "inference_seconds": 6.692225300001155,
+          "rtf": 0.26325254842766893,
+          "peak_rss_mib": 946.12890625,
+          "wer": null,
+          "language": "en",
+          "language_probability": 1,
+          "segments": 6,
+          "nonempty_transcript": true
+        }
+      ],
+      "median_inference_seconds": 5.726580000002286,
+      "median_rtf": 0.22526688974073572,
+      "median_peak_rss_mib": 946.109375,
+      "environment": {
+        "python": "3.11.9",
+        "platform": "Windows-10-10.0.26300-SP0",
+        "logical_cpus": 16,
+        "physical_cpus": 10,
+        "ram_gib": 15.637977600097656,
+        "versions": {
+          "faster-whisper": "1.2.1",
+          "ctranslate2": "4.9.1",
+          "numpy": "2.4.6",
+          "psutil": "7.2.2"
+        }
+      },
+      "model_revision": "536b0662742c02347bc0e980a01041f333bce120"
+    },
+    {
+      "backend": "whisper.cpp",
+      "model_name": "base.en",
+      "device": "cpu",
+      "compute_type": "ggml",
+      "cpu_threads": 4,
+      "beam_size": 5,
+      "best_of": 5,
+      "vad_filter": false,
+      "requested_language": "en",
+      "sample_sha256": "daa0a79d8b9798f3ce7eadbfd564e58ab039892bbfb3474e05a28ef345aaa924",
+      "audio_duration_seconds": 25.4213125,
+      "audio_full_scale_samples": 10,
+      "inference_calculation_method": "total_minus_load",
+      "runs": [
+        {
+          "run": 1,
+          "inference_seconds": 8.15522,
+          "rtf": 0.320802476268682,
+          "load_time_seconds": 0.28870999999999997,
+          "total_time_seconds": 8.44393,
+          "wall_time_seconds": 8.98627370000031,
+          "peak_rss_mib": 315.828125,
+          "inference_calculation_method": "total_minus_load"
+        },
+        {
+          "run": 2,
+          "inference_seconds": 8.75362,
+          "rtf": 0.34434178015002176,
+          "load_time_seconds": 0.14509,
+          "total_time_seconds": 8.89871,
+          "wall_time_seconds": 8.959693400000106,
+          "peak_rss_mib": 318.5859375,
+          "inference_calculation_method": "total_minus_load"
+        },
+        {
+          "run": 3,
+          "inference_seconds": 8.750230000000002,
+          "rtf": 0.3442084274759615,
+          "load_time_seconds": 0.17563,
+          "total_time_seconds": 8.92586,
+          "wall_time_seconds": 8.991285899999639,
+          "peak_rss_mib": 315.45703125,
+          "inference_calculation_method": "total_minus_load"
+        }
+      ],
+      "median_inference_seconds": 8.750230000000002,
+      "median_rtf": 0.3442084274759615,
+      "median_wall_time_seconds": 8.98627370000031,
+      "median_load_time_seconds": 0.17563,
+      "median_total_time_seconds": 8.89871,
+      "median_peak_rss_mib": 315.828125,
+      "environment": {
+        "python": "3.11.9",
+        "platform": "Windows-10-10.0.26300-SP0",
+        "logical_cpus": 16,
+        "physical_cpus": 10,
+        "ram_gib": 15.637977600097656,
+        "versions": {
+          "numpy": "2.4.6",
+          "psutil": "7.2.2"
+        }
+      },
+      "binary_release": "b5907",
+      "binary_sha256": "5d6dfed3346283b7deda6059540903c9fcffb438bdb9691dbbef8703215e74ab",
+      "model_sha256": "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002"
+    }
+  ]
+}

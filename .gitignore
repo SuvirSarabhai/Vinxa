@@ -21,6 +21,7 @@ build/
 data/
 models/
 recordings/
+test_recordings/
 *.wav
 *.db
 *.db-*
@@ -30,3 +31,12 @@ tmp/
 .DS_Store
 Thumbs.db
 
+# Model weight formats, wherever accidentally copied
+*.bin
+*.ggml
+*.gguf
+*.onnx
+*.safetensors
+*.pt
+*.pth
+*.ckpt

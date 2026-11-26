@@ -1,18 +1,12 @@
-# Local transcription runtime
-faster-whisper>=1.1,<2
-ctranslate2>=4.5,<5
+# Phase 1 WAV engine and benchmark dependencies
+-r requirements-phase1.txt
+
+# Later streaming runtime
 silero-vad>=5.1,<6
 onnxruntime>=1.20,<2
-numpy>=2,<3
-soundfile>=0.13,<1
 websockets>=14,<17
 pydantic>=2.10,<3
 
 # Windows loopback fallback and packaging
 PyAudioWPatch>=0.2.12.6,<0.3
 pyinstaller>=6.11,<7
-
-# Tests and quality harness
-pytest>=8,<10
-jiwer>=3.1,<4
-

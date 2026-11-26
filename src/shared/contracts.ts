@@ -32,4 +32,11 @@ export interface DesktopApi {
   onFixtureStatus(listener: (status: FixtureStatus) => void): () => void
 }
 
-export const sourceIds = { mic: 1, system: 2 } as const
+export const sourceIds = { mic: 0, system: 1 } as const
+
+export interface CaptureBridge {
+  ready(): Promise<void>
+  frame(frame: ArrayBuffer): Promise<void>
+  finished(result: { error: string | null; paddedSamples: number }): Promise<void>
+  onStop(listener: () => void): () => void
+}

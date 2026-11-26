@@ -42,3 +42,7 @@ export const sidecarEventSchema = z.discriminatedUnion('type', [
 })
 export const fixtureCommandSchema = z.enum(['play', 'pause', 'stop'])
 export const fixtureStatusSchema = z.enum(['idle', 'playing', 'paused', 'completed'])
+
+export const captureFinishedSchema = z.object({
+  error: z.string().max(300).nullable(), paddedSamples: z.number().int().min(0).max(1599)
+}).strict()

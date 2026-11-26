@@ -15,20 +15,20 @@ The product is built for a short hackathon sprint. The first objective is a reli
 
 ```text
 Windows microphone + WASAPI loopback
-        │
-        ▼
+        â”‚
+        â–¼
 Electron hidden capture window
-getUserMedia + getDisplayMedia → AudioWorklet (16 kHz mono PCM)
-        │ localhost WebSocket, session token
-        ▼
+getUserMedia + getDisplayMedia â†’ AudioWorklet (16 kHz mono PCM)
+        â”‚ localhost WebSocket, session token
+        â–¼
 Python sidecar
-VAD → faster-whisper → partial/final transcript events
-        │
-        ▼
+VAD â†’ faster-whisper â†’ partial/final transcript events
+        â”‚
+        â–¼
 Electron main process
-state machine → SQLite/FTS5 → local audio spool → exports
-        │
-        ▼
+state machine â†’ SQLite/FTS5 â†’ local audio spool â†’ exports
+        â”‚
+        â–¼
 React overlay and library
 live transcript, search, insights, consent, settings
 ```
@@ -80,8 +80,9 @@ docs/          PRD, architecture, privacy, and test-result documentation.
 
 Phase 1 Developer A work needs Node.js and pnpm only. The Python setup below is
 needed when running Developer B's speech sidecar or harness. Current status: the
-tray shell, contracts, and sample transcript player are implemented; live capture,
-transcription, saved meetings, and AI notes are not implemented yet.
+tray shell, contracts, sample transcript player, opt-in mic/system WAV diagnostics
+and independent offline Python WAV transcription are implemented. The live
+capture-to-transcript connection, saved meetings and AI notes are later work.
 
 ```powershell
 pnpm install
@@ -102,6 +103,25 @@ builds an unsigned NSIS installer and portable executable under `release/`.
 The current package contains the Phase 1 shell; sidecar/model packaging will be
 added when Developer B supplies those artifacts. See [Phase 1 contracts](docs/phase-1-contracts.md)
 for the integration proposal and completion checks.
+
+Developer B's microphone diagnostic is opt-in. Set `$env:VINXA_CAPTURE_TEST='mic'`
+before `pnpm dev`, then confirm the native recording prompt. It saves
+`test_recordings/mic.wav` and stops after 30 seconds or when Stop recording is clicked.
+Run `node scripts/validate-wav.mjs test_recordings/mic.wav` to check the result.
+See [microphone capture status and test steps](docs/phase1-audio-capture.md).
+
+For the Python Phase 1 environment and offline benchmark commands, follow
+[Developer B setup](README-developer-b.md). The measured English baseline is
+faster-whisper base.en CPU INT8; see [all measured runs and limitations](docs/phase1-speech-benchmark.md).
+The Google Meet real-call/video and required device checks are recorded. Generic
+Electron loopback missed Meet on a non-default output; the standalone selected-
+OnePlus fallback captured clear remote speech and passed strict validation.
+Mentor/team reviews remain pending; see [final acceptance](docs/phase1-final-acceptance-report.md).
+
+Use `$env:VINXA_CAPTURE_TEST='system'` for Windows loopback into `system.wav`,
+or `'both'` for separate `mic.wav` and `system.wav` files. Move previous test WAVs
+to a local archive before repeating. Play audio through Windows default output,
+and use headphones for the simultaneous test. No video is saved.
 
 ## Scripts
 
@@ -128,4 +148,3 @@ The default **Local-only** mode blocks non-localhost network requests. When a us
 5. Offline/recovery/device-change verification, then stretch goals.
 
 See [docs/README.md](docs/README.md), [sidecar/README.md](sidecar/README.md), and [harness/README.md](harness/README.md) for the working contracts and validation plan.
-

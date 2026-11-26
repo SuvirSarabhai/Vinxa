@@ -3,11 +3,13 @@ import { join } from 'node:path'
 import { FixturePlayer } from './fixture-player'
 import { ipcChannels } from '../shared/ipc-channels'
 import { fixtureCommandSchema } from '../shared/schemas'
+import { startCaptureTest } from './audio/capture-test'
 
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
 let isQuitting = false
 let fixturePlayer: FixturePlayer | undefined
+let captureTest: Awaited<ReturnType<typeof startCaptureTest>>
 
 function openLibrary(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
@@ -70,7 +72,14 @@ if (!hasLock) {
   app.quit()
 } else {
   app.on('second-instance', openLibrary)
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
+    if (!isQuitting && captureTest) {
+      event.preventDefault()
+      isQuitting = true
+      fixturePlayer?.stop()
+      void captureTest.stop().finally(() => app.quit())
+      return
+    }
     isQuitting = true
     fixturePlayer?.stop()
   })
@@ -90,6 +99,12 @@ if (!hasLock) {
     })
     mainWindow?.webContents.on('did-start-loading', () => fixturePlayer?.stop())
     app.on('activate', openLibrary)
+    const mode = process.env.VINXA_CAPTURE_TEST
+    if ((mode === 'mic' || mode === 'system' || mode === 'both') && mainWindow) {
+      void startCaptureTest(mainWindow, mode).then((test) => { captureTest = test }).catch(() => {
+        console.error('Audio diagnostic could not start; check output file and disk space')
+      })
+    }
   }).catch((error: unknown) => {
     console.error('Vinxa startup failed', error)
     app.exit(1)
