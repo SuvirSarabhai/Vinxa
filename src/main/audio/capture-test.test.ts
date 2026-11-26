@@ -39,6 +39,8 @@ afterEach(async () => {
   fake.windows.length = 0
   fake.handlers.clear()
   vi.clearAllMocks()
+  vi.restoreAllMocks()
+  vi.unstubAllEnvs()
 })
 
 async function start(mode: 'mic' | 'system' | 'both') {
@@ -120,5 +122,18 @@ describe('capture coordinator source isolation', () => {
     expect(fake.dialog).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
       type: 'error', message: 'Audio capture page reloaded during startup or recording; rebuild and retry'
     }))
+  })
+
+  it('writes diagnostics to a file even when the launch terminal pipe is broken', async () => {
+    vi.stubEnv('VINXA_CAPTURE_DEBUG', '1')
+    const consoleInfo = vi.spyOn(console, 'info').mockImplementation(() => { throw new Error('EPIPE: broken pipe, write') })
+    const { test } = await start('system')
+    const system = fake.windows[0]
+    expect(() => fake.checkPermission(system.webContents, 'display-capture', '', {})).not.toThrow()
+    await finishAll()
+    await test.stop()
+    const diagnostics = await readFile(join(fake.directory, 'test_recordings/capture-debug.log'), 'utf8')
+    expect(diagnostics).toContain('permission-check system display-capture')
+    expect(consoleInfo).not.toHaveBeenCalled()
   })
 })

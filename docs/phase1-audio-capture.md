@@ -14,7 +14,7 @@ Implementation and hardware verification are tracked separately below.
 | PCM conversion | DONE | Synthetic tests cover 48 kHz stereo 1 kHz tone, 44.1 kHz and other rates, continuity, downmix, silence, anti-alias filtering, clipping and frames |
 | WAV writer and validator | DONE | Tests cover duration, interrupted header, final trim, existing file preservation, bounded queue and invalid WAVs |
 | Cleanup logic | DONE | Mocked renderer tests cover stop, denied permission and cancellation during device acquisition; worklet tests cover acknowledgements and overflow |
-| Current automated checks | DONE | pnpm typecheck and pnpm build passed; pnpm test reported 7 files and 33 tests passed |
+| Current automated checks | DONE | pnpm typecheck and pnpm build passed; pnpm test reported 7 files and 34 tests passed |
 | Generated microphone Electron smoke | DONE | After the user changed Windows application detection, Electron launched. Latest run produced a valid 4.16-second WAV with 66,560 samples at 16 kHz, mono, 16-bit, RMS 0.096657 and zero full-scale samples. Hidden capture window was destroyed. |
 | App launch and sample-player runtime regression | PARTIAL | App, preload bridge, partial/final sample playback, pause/resume/reset and close-to-tray passed. Second-instance launch exits with Windows code 2147483651. The same failure was reproduced using Developer A's original main from commit 9892b7a. |
 | Physical microphone WAV and listening | DONE | mic.wav has 113,450 samples, duration 7.090625 seconds, peak 0.247192 and zero clipped samples. User confirmed the microphone is clear. |
@@ -185,6 +185,13 @@ startup. The renderer configuration now explicitly preloads zod. A capture-page
 reload now finalizes files and reports a specific error. Optional diagnostics,
 enabled with VINXA_CAPTURE_DEBUG set to 1, log permission and startup stage names.
 They contain no audio samples or transcript text.
+
+An earlier diagnostic logger wrote to the launch terminal after its pipe had closed,
+raising EPIPE in Electron main. Diagnostics now append to the local
+test_recordings/capture-debug.log file and never write to the launch terminal.
+The regression test simulates an unavailable console and verifies file logging and
+capture finalization still work. A controlled Windows loopback retest after this
+fix captured 4.76 seconds and detected the expected 880 Hz tone.
 
 The built application completed actual Windows loopback tests. A controlled test
 played an 880 Hz tone through the default output and captured 4.850625 seconds.

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
-import { unlink } from 'node:fs/promises'
+import { appendFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { AudioSourceName } from '../../shared/contracts'
 import { sourceIds } from '../../shared/contracts'
@@ -70,8 +70,12 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
   let killTimer: ReturnType<typeof setTimeout> | undefined
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
+  let debugWrites = Promise.resolve()
   const debug = (stage: string): void => {
-    if (process.env.VINXA_CAPTURE_DEBUG === '1') console.info(`[capture] ${stage}`)
+    if (process.env.VINXA_CAPTURE_DEBUG !== '1') return
+    // A GUI app can outlive its launcher's stdout pipe. Diagnostics must not use it.
+    debugWrites = debugWrites.then(() => appendFile(join(directory, 'capture-debug.log'), `[capture] ${stage}\n`))
+      .catch(() => {})
   }
 
   function authorize(event: IpcMainInvokeEvent): CaptureSource {
@@ -91,6 +95,7 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       captureSession.setPermissionCheckHandler(null)
       captureSession.setPermissionRequestHandler(null)
       captureSession.setDisplayMediaRequestHandler(null)
+      await debugWrites
       resolveStopped()
       if (!owner.isDestroyed()) void dialog.showMessageBox(owner, {
         type: error ? 'error' : 'info', title: 'Audio test stopped',
