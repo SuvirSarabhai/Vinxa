@@ -26,6 +26,8 @@ Implementation and hardware verification are tracked separately below.
 | User system playback recording | PARTIAL | system.wav contains 293,760 samples over 18.36 seconds at 16 kHz, mono, 16-bit. RIFF and data lengths match. RMS is 0.093222. Strict validation flags 2 full-scale samples (0.000681 percent). User confirmed system audio is clear. |
 | Real-call dual capture | MANUAL-PENDING | Awaiting simultaneous physical microphone and system capture and separate listening checks |
 | Simultaneous playback test using speakers | PARTIAL | Both files passed WAV validation at 16 kHz, mono, 16-bit, each with 230,400 samples over 14.4 seconds and no full-scale samples. User heard voice and playback in mic.wav and playback only in system.wav. User confirmed laptop or external speakers were used; acoustic pickup explains the reported overlap. A headphone test is needed to check isolation. |
+| Headphone isolation signal check | DONE | Both WAVs contain 406,741 samples over 25.4213125 seconds at 16 kHz, mono, 16-bit. At 2–4 seconds, system RMS is 0.09117 while mic RMS is approximately 0.00001. At 6–8 seconds, mic RMS is 0.22495 while system RMS is zero. These distinct activity intervals support source isolation. Listening confirmation remains pending. |
+| Headphone-test audio level validation | PARTIAL | system.wav passes strict validation with zero clipped samples. mic.wav has 10 full-scale samples and is flagged by the strict clipping check. Its overall RMS is 0.067071. Lower microphone input level for the next recording. |
 | Speech benchmarks | MANUAL-PENDING | Later stages need implementation and approval |
 
 ## Integration and files
@@ -148,6 +150,7 @@ dependency setup succeeds.
 | Meeting app on a non-default output | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Real call with simultaneous mic and system | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Simultaneous microphone and playback using speakers | Yes, two files | Both pass | User heard both sources; mic includes speaker pickup | Both WAVs finalized | PARTIAL |
+| Simultaneous capture using headphones | Yes, two files | System passes; mic has 10 full-scale samples | Listening pending; level intervals support isolation | Both WAVs finalized | PARTIAL |
 
 ## Run the system audio test
 
