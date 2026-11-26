@@ -25,6 +25,7 @@ Implementation and hardware verification are tracked separately below.
 | Simultaneous generated input test | DONE | node scripts/smoke-microphone.cjs both passed with two distinct 4.992-second WAVs. Each has 79,872 samples at 16 kHz, mono, 16-bit, and zero clipped samples. Windows loopback compatibility requires the manual test. |
 | User system playback recording | PARTIAL | system.wav contains 293,760 samples over 18.36 seconds at 16 kHz, mono, 16-bit. RIFF and data lengths match. RMS is 0.093222. Strict validation flags 2 full-scale samples (0.000681 percent). User confirmed system audio is clear. |
 | Real-call dual capture | MANUAL-PENDING | Awaiting simultaneous physical microphone and system capture and separate listening checks |
+| Simultaneous playback test using speakers | PARTIAL | Both files passed WAV validation at 16 kHz, mono, 16-bit, each with 230,400 samples over 14.4 seconds and no full-scale samples. User heard voice and playback in mic.wav and playback only in system.wav. User confirmed laptop or external speakers were used; acoustic pickup explains the reported overlap. A headphone test is needed to check isolation. |
 | Speech benchmarks | MANUAL-PENDING | Later stages need implementation and approval |
 
 ## Integration and files
@@ -146,6 +147,7 @@ dependency setup succeeds.
 | Default output changed during capture | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Meeting app on a non-default output | Pending | Pending | Pending | Pending | MANUAL-PENDING |
 | Real call with simultaneous mic and system | Pending | Pending | Pending | Pending | MANUAL-PENDING |
+| Simultaneous microphone and playback using speakers | Yes, two files | Both pass | User heard both sources; mic includes speaker pickup | Both WAVs finalized | PARTIAL |
 
 ## Run the system audio test
 
