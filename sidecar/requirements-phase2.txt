@@ -1,4 +1,6 @@
-# Protocol server only; VAD/model runtime is installed in its later stage.
+# Streaming runtime; Silero V6 ONNX weights are bundled with faster-whisper.
 -r requirements-phase1.txt
 websockets>=14,<17
 jsonschema>=4.23,<5
+faster-whisper>=1.2,<2
+onnxruntime>=1.20,<2

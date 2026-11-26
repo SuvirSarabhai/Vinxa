@@ -2,8 +2,7 @@
 -r requirements-phase2.txt
 
 # Later streaming runtime
-silero-vad>=5.1,<6
-onnxruntime>=1.20,<2
+# Silero ONNX is provided by faster-whisper (no Torch dependency).
 pydantic>=2.10,<3
 
 # Windows loopback fallback and packaging
