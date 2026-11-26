@@ -9,6 +9,7 @@ from threading import Lock
 from time import perf_counter
 
 from .audio_utils import read_wav, real_time_factor
+from .local_agreement import Word, normalized
 
 
 class SpeechEngineError(RuntimeError):
@@ -34,6 +35,12 @@ class Transcription:
     model_load_seconds: float
     inference_seconds: float
     rtf: float
+
+
+@dataclass(frozen=True)
+class WordInference:
+    words: tuple[Word, ...]
+    inference_seconds: float
 
 
 def model_cache(path: str | Path | None = None) -> Path:
@@ -124,3 +131,47 @@ class SpeechEngine:
         return Transcription(" ".join(segment.text for segment in segments), segments, getattr(info, "language", language or "en"),
                              lang_prob, audio.duration_seconds, self.model_load_seconds,
                              elapsed, real_time_factor(elapsed, audio.duration_seconds))
+
+    def transcribe_samples(self, samples, *, language="en", beam_size=1, offset=0) -> WordInference:
+        """Bounded in-memory inference; the existing WAV API remains unchanged."""
+        import logging
+        import numpy as np
+        audio = np.asarray(samples, dtype=np.float32)
+        if audio.ndim != 1 or not 0 < len(audio) <= 480000 or not np.isfinite(audio).all() or np.max(np.abs(audio)) > 1:
+            raise SpeechEngineError("INVALID_AUDIO", "Expected bounded finite 16 kHz mono samples")
+        if not isinstance(offset, int) or offset < 0 or not 1 <= beam_size <= 5:
+            raise SpeechEngineError("INVALID_AUDIO", "Invalid inference options")
+        library_logger = logging.getLogger("faster_whisper")
+        library_logger.setLevel(logging.ERROR)
+        library_logger.propagate = False
+        with self._lock:
+            self._load()
+            started = perf_counter()
+            try:
+                segments, _ = self._model.transcribe(
+                    audio, language=language, beam_size=beam_size, word_timestamps=True,
+                    condition_on_previous_text=False, vad_filter=False, temperature=0.0,
+                    no_speech_threshold=0.6, log_prob_threshold=-1.0, compression_ratio_threshold=2.4,
+                    hallucination_silence_threshold=1.0)
+                words = []
+                quiet = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2))) < 0.003
+                for segment in segments:
+                    if (getattr(segment, "no_speech_prob", 0) >= 0.6 or
+                            getattr(segment, "avg_logprob", 0) < -1.0 or
+                            getattr(segment, "compression_ratio", 1) > 2.4):
+                        continue
+                    if quiet and normalized(segment.text) in {"thankyouforwatching", "thanksforwatching", "subscribe"}:
+                        continue
+                    for word in segment.words or []:
+                        start, end = round(word.start * 16000), round(word.end * 16000)
+                        if 0 <= start < end <= len(audio) and word.word.strip():
+                            words.append(Word(word.word, offset + start, offset + end))
+            except Exception as error:
+                raise SpeechEngineError("INFERENCE_FAILED", "Local word inference failed") from error
+            return WordInference(tuple(words), perf_counter() - started)
+
+    def warmup(self, *, language="en"):
+        import numpy as np
+        self.load()
+        # Only execute synthetic inference; never publish or save its hypothesis.
+        self.transcribe_samples(np.zeros(8000, dtype=np.float32), language=language)
