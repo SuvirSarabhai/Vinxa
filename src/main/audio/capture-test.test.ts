@@ -214,6 +214,19 @@ describe('capture coordinator source isolation', () => {
     expect(fake.dialog).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ type: 'error', message: 'System capture returned no audio track' }))
   })
 
+  it('validates optional timing in main without changing the Phase 1 PCM layout', async () => {
+    const { test } = await start('mic')
+    const window = fake.windows[0]
+    const write = fake.handlers.get(ipcChannels.captureFrame)
+    const frame = new ArrayBuffer(3201)
+    await expect(write({ senderFrame: window.webContents.mainFrame }, frame, { startSample: -1 })).rejects.toThrow()
+    await write({ senderFrame: window.webContents.mainFrame }, frame, { startSample: 1600 })
+    await finishAll()
+    await test.stop()
+    const mic = await readFile(join(fake.directory, 'test_recordings/mic.wav'))
+    expect(mic.readUInt32LE(40)).toBe(3200)
+  })
+
   it('finalizes capture with a clear error if its page reloads during startup', async () => {
     const { test } = await start('system')
     const window = fake.windows[0]

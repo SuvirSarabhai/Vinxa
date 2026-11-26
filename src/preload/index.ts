@@ -1,10 +1,27 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CaptureBridge, DesktopApi } from '../shared/contracts'
 import { ipcChannels } from '../shared/ipc-channels'
-import { captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema, transcriptSegmentSchema } from '../shared/schemas'
+import { audioFrameMetadataSchema, captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema,
+  sidecarEventSchema, transcriptSegmentSchema } from '../shared/schemas'
 import { validatePcmFrame } from '../shared/pcm'
 
 const desktopApi: DesktopApi = {
+  onEngineStatus: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      const result = sidecarEventSchema.safeParse(payload)
+      if (result.success && result.data.type === 'status') listener(result.data)
+    }
+    ipcRenderer.on(ipcChannels.engineStatus, handler)
+    return () => ipcRenderer.removeListener(ipcChannels.engineStatus, handler)
+  },
+  onError: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+      const result = sidecarEventSchema.safeParse(payload)
+      if (result.success && result.data.type === 'error') listener(result.data)
+    }
+    ipcRenderer.on(ipcChannels.errorRaised, handler)
+    return () => ipcRenderer.removeListener(ipcChannels.errorRaised, handler)
+  },
   fixtureCommand: (command) => ipcRenderer.invoke(ipcChannels.fixtureCommand, fixtureCommandSchema.parse(command)),
   onTranscript: (listener) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
@@ -28,9 +45,10 @@ contextBridge.exposeInMainWorld('vinxa', desktopApi)
 
 const captureBridge: CaptureBridge = {
   ready: () => ipcRenderer.invoke(ipcChannels.captureReady),
-  frame: (frame) => {
+  frame: (frame, metadata) => {
     validatePcmFrame(frame)
-    return ipcRenderer.invoke(ipcChannels.captureFrame, frame)
+    if (metadata === undefined) return ipcRenderer.invoke(ipcChannels.captureFrame, frame)
+    return ipcRenderer.invoke(ipcChannels.captureFrame, frame, audioFrameMetadataSchema.parse(metadata))
   },
   finished: (result) => ipcRenderer.invoke(ipcChannels.captureFinished, captureFinishedSchema.parse(result)),
   onStop: (listener) => {

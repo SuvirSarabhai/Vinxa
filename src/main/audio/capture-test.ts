@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 import type { AudioSourceName } from '../../shared/contracts'
 import { sourceIds } from '../../shared/contracts'
 import { ipcChannels } from '../../shared/ipc-channels'
-import { captureFinishedSchema } from '../../shared/schemas'
+import { audioFrameMetadataSchema, captureFinishedSchema } from '../../shared/schemas'
 import { parseMicrophoneGain } from '../../shared/pcm'
 import { WavWriter } from './wav-writer'
 import { watchWindowsDefaultOutput } from './windows-output-monitor'
@@ -179,8 +179,9 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       if (sources.every((source) => source.finished)) void close()
     })
   }
-  ipcMain.handle(ipcChannels.captureFrame, async (event, frame: unknown) => {
+  ipcMain.handle(ipcChannels.captureFrame, async (event, frame: unknown, metadata?: unknown) => {
     const item = authorize(event)
+    if (metadata !== undefined) audioFrameMetadataSchema.parse(metadata)
     if (closing || item.finished) throw new Error('Capture already closed')
     try { await item.writer.append(frame as ArrayBuffer) }
     catch { error = `${item.source} audio write failed; check disk space and file access`; void stop(); throw new Error(error) }
