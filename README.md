@@ -103,6 +103,12 @@ The current package contains the Phase 1 shell; sidecar/model packaging will be
 added when Developer B supplies those artifacts. See [Phase 1 contracts](docs/phase-1-contracts.md)
 for the integration proposal and completion checks.
 
+Developer B's microphone diagnostic is opt-in. Set `$env:VINXA_CAPTURE_TEST='mic'`
+before `pnpm dev`, then confirm the native recording prompt. It saves
+`test_recordings/mic.wav` and stops after 30 seconds or when Stop recording is clicked.
+Run `node scripts/validate-wav.mjs test_recordings/mic.wav` to check the result.
+See [microphone capture status and test steps](docs/phase1-audio-capture.md).
+
 ## Scripts
 
 | Command | Purpose |

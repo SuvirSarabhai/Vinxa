@@ -34,7 +34,7 @@ are Phase 2 work; schemas alone do not enforce consent.
 Use a random localhost port and per-session token. The first JSON message follows
 sidecarConfigSchema: `type: config`, token, `sampleRate: 16000`, `channels: 1`,
 `encoding: pcm_s16le`, `frameMs: 100`, model, and nullable language.
-Each binary frame contains one source byte (1 = microphone, 2 = system), followed by
+Each binary frame contains one source byte (0 = microphone, 1 = system), followed by
 3,200 bytes of signed little-endian PCM (1,600 mono samples).
 Sidecar events are partial/final text with source, text, startMs, endMs;
 status (`loading`, `ready`, `stopped`); or error with code and message.
@@ -42,7 +42,12 @@ The Electron adapter will assign stable utterance ids and meeting ids and map ev
 type to isFinal before publishing a TranscriptSegment. Repeated partial/final updates
 for one utterance must preserve its startMs to support that adapter.
 
-No sidecar server or capture path is implemented by Developer A in Phase 1.
+Developer B's microphone diagnostic uses the hidden capture page and preload bridge.
+Its channels are capture:ready, capture:frame, capture:finished, and capture:stop.
+Frames use the byte layout above. capture:frame is acknowledged after the WAV write.
+capture:finished carries a nullable error and the final frame's zero-padding count.
+See phase1-audio-capture.md for implementation status and checks.
+No sidecar server is implemented in Phase 1.
 Database schema and repositories remain Phase 3 work under Developer A.
 
 The proposed table definitions from the plan are frozen for review here; SQL

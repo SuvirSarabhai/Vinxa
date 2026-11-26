@@ -1,10 +1,15 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
+import { resolve } from 'node:path'
 
 export default defineConfig({
   main: { plugins: [externalizeDepsPlugin()] },
   preload: { build: { externalizeDeps: false } },
   renderer: {
+    build: { rollupOptions: { input: {
+      index: resolve('src/renderer/index.html'),
+      capture: resolve('src/renderer/capture/index.html')
+    } } },
     plugins: [
       react(),
       {

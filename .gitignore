@@ -21,6 +21,7 @@ build/
 data/
 models/
 recordings/
+test_recordings/
 *.wav
 *.db
 *.db-*

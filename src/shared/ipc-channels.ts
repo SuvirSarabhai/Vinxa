@@ -7,5 +7,7 @@ export const ipcChannels = {
   recordingState: 'event:recording-state', transcriptSegment: 'event:transcript-segment',
   audioLevel: 'event:audio-level', engineStatus: 'event:engine-status',
   insightsReady: 'event:insights-ready', errorRaised: 'event:error',
-  fixtureCommand: 'fixture:command', fixtureStatus: 'fixture:status'
+  fixtureCommand: 'fixture:command', fixtureStatus: 'fixture:status',
+  captureReady: 'capture:ready', captureFrame: 'capture:frame',
+  captureFinished: 'capture:finished', captureStop: 'capture:stop'
 } as const

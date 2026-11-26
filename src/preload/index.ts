@@ -1,7 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DesktopApi } from '../shared/contracts'
+import type { CaptureBridge, DesktopApi } from '../shared/contracts'
 import { ipcChannels } from '../shared/ipc-channels'
-import { fixtureCommandSchema, fixtureStatusSchema, transcriptSegmentSchema } from '../shared/schemas'
+import { captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema, transcriptSegmentSchema } from '../shared/schemas'
+import { validatePcmFrame } from '../shared/pcm'
 
 const desktopApi: DesktopApi = {
   fixtureCommand: (command) => ipcRenderer.invoke(ipcChannels.fixtureCommand, fixtureCommandSchema.parse(command)),
@@ -24,4 +25,19 @@ const desktopApi: DesktopApi = {
 }
 
 contextBridge.exposeInMainWorld('vinxa', desktopApi)
+
+const captureBridge: CaptureBridge = {
+  ready: () => ipcRenderer.invoke(ipcChannels.captureReady),
+  frame: (frame) => {
+    validatePcmFrame(frame, 0)
+    return ipcRenderer.invoke(ipcChannels.captureFrame, frame)
+  },
+  finished: (result) => ipcRenderer.invoke(ipcChannels.captureFinished, captureFinishedSchema.parse(result)),
+  onStop: (listener) => {
+    const handler = (): void => listener()
+    ipcRenderer.on(ipcChannels.captureStop, handler)
+    return () => ipcRenderer.removeListener(ipcChannels.captureStop, handler)
+  }
+}
+contextBridge.exposeInMainWorld('vinxaCapture', captureBridge)
 

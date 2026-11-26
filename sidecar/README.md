@@ -18,7 +18,7 @@ Use `base.en` int8 for the first performance baseline. Test `small` int8 for Ind
 ## Protocol outline
 
 1. Electron opens `ws://127.0.0.1:<port>` and sends a configuration message with a one-time session token.
-2. Each PCM frame is prefixed with a one-byte source id: `0x01` for microphone and `0x02` for system audio.
+2. Each PCM frame is prefixed with a one-byte source id: `0x00` for microphone and `0x01` for system audio.
 3. The sidecar publishes JSON events. Transcript events include `source`, `text`, `startMs`, `endMs`, and `isFinal`.
 4. On loss of the sidecar, Electron shows a clear status, retains local audio, and may restart the process with bounded retries.
 
