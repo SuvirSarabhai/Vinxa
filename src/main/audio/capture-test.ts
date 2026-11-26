@@ -1,12 +1,15 @@
 import { app, BrowserWindow, desktopCapturer, dialog, ipcMain, session } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { appendFile, unlink } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { AudioSourceName } from '../../shared/contracts'
 import { sourceIds } from '../../shared/contracts'
 import { ipcChannels } from '../../shared/ipc-channels'
 import { captureFinishedSchema } from '../../shared/schemas'
+import { parseMicrophoneGain } from '../../shared/pcm'
 import { WavWriter } from './wav-writer'
+import { watchWindowsDefaultOutput } from './windows-output-monitor'
+import type { WindowsOutputMonitor } from './windows-output-monitor'
 
 export type CaptureTestMode = AudioSourceName | 'both'
 
@@ -21,23 +24,34 @@ interface CaptureSource {
 
 export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMode = 'mic'): Promise<{ stop(): Promise<void> } | undefined> {
   const names: AudioSourceName[] = mode === 'both' ? ['mic', 'system'] : [mode]
+  let micGain = 1
+  try { if (names.includes('mic')) micGain = parseMicrophoneGain(process.env.VINXA_MIC_GAIN) }
+  catch (error) {
+    await dialog.showMessageBox(owner, { type: 'error', title: 'Invalid microphone gain',
+      message: error instanceof Error ? error.message : 'Invalid microphone gain' })
+    return
+  }
   const consent = await dialog.showMessageBox(owner, {
     type: 'question', title: 'Audio capture test',
     message: `Record ${names.join(' and ')} audio into separate local WAV files?`,
-    detail: 'Tell participants before starting. Files stay in test_recordings on this computer. The test stops after 30 seconds. Existing files are preserved. System audio uses Windows default output; play a video or call through that output.',
+    detail: `Microphone gain: ${micGain.toFixed(2)} (system gain stays 1.00). Tell participants before starting. Files stay in the selected local test directory on this computer. The test stops after 30 seconds. Existing files are preserved. System audio uses Windows default output; play a video or call through that output.`,
     buttons: ['Cancel', 'Start audio test'], defaultId: 0, cancelId: 0
   })
   if (consent.response !== 1) return
 
-  const directory = join(app.getAppPath(), 'test_recordings')
+  const directory = process.env.VINXA_CAPTURE_DIR
+    ? resolve(process.env.VINXA_CAPTURE_DIR)
+    : join(app.isPackaged ? app.getPath('userData') : app.getAppPath(), 'test_recordings')
+  const filenames = process.env.VINXA_CAPTURE_ACCEPTANCE === '1'
+    ? { mic: 'microphone.wav', system: 'system_audio.wav' } : { mic: 'mic.wav', system: 'system.wav' }
   const writers: { source: AudioSourceName; writer: WavWriter }[] = []
   try {
-    for (const source of names) writers.push({ source, writer: await WavWriter.create(join(directory, `${source}.wav`), sourceIds[source]) })
+    for (const source of names) writers.push({ source, writer: await WavWriter.create(join(directory, filenames[source]), sourceIds[source]) })
   } catch {
     // Roll back only empty files created by this attempt, preserving previous recordings.
     for (const { source, writer } of writers) {
       await writer.close()
-      await unlink(join(directory, `${source}.wav`))
+      await unlink(join(directory, filenames[source]))
     }
     await dialog.showMessageBox(owner, {
       type: 'error', title: 'Audio test could not start',
@@ -71,6 +85,7 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
   let stopTimer: ReturnType<typeof setTimeout> | undefined
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let debugWrites = Promise.resolve()
+  let outputMonitor: WindowsOutputMonitor | undefined
   const debug = (stage: string): void => {
     if (process.env.VINXA_CAPTURE_DEBUG !== '1') return
     // A GUI app can outlive its launcher's stdout pipe. Diagnostics must not use it.
@@ -88,6 +103,7 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
     if (closing) return closing
     closing = (async () => {
       clearTimeout(killTimer); clearTimeout(stopTimer); clearTimeout(startupTimer)
+      await outputMonitor?.stop()
       for (const item of sources) if (!item.window.isDestroyed()) item.window.destroy()
       const results = await Promise.allSettled(sources.map((item) => item.writer.close(item.padding)))
       if (results.some((result) => result.status === 'rejected')) error = 'Could not finalize one or more WAV files'
@@ -108,6 +124,7 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
   function stop(): Promise<void> {
     if (!stopping && !closing) {
       stopping = true
+      void outputMonitor?.stop()
       for (const item of sources) if (!item.finished && !item.window.isDestroyed()) item.window.webContents.send(ipcChannels.captureStop)
       killTimer = setTimeout(() => { error ??= 'Capture stop timed out'; void close() }, 3000)
     }
@@ -191,11 +208,36 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
     }).then(() => stop())
   })
   startupTimer = setTimeout(() => { error = 'Audio startup timed out before the audio context became ready'; void stop() }, 20000)
+  if (names.includes('system')) {
+    try {
+      const scriptPath = app.isPackaged
+        ? join(process.resourcesPath, 'audio/default-output.ps1')
+        : join(__dirname, '../../resources/audio/default-output.ps1')
+      outputMonitor = await watchWindowsDefaultOutput(scriptPath, () => {
+        if (stopping || closing) return
+        error = 'Windows default audio output changed during system capture; check the output and restart the test'
+        debug('default-output-changed')
+        void stop()
+      }, (message) => {
+        if (stopping || closing) return
+        error = message
+        debug('default-output-monitor-failed')
+        void stop()
+      })
+      debug('default-output-monitor-ready')
+      if (stopping || closing) { await outputMonitor.stop(); return { stop } }
+    } catch {
+      error = 'Windows default-output monitoring could not start; capture was stopped. Check the Windows audio runtime and monitor resource.'
+      await close()
+      return { stop }
+    }
+  }
   try {
     await Promise.all(sources.map(async (item) => {
+      const query = { source: item.source, micGain: String(item.source === 'mic' ? micGain : 1) }
       if (process.env.ELECTRON_RENDERER_URL) {
-        await item.window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/capture/index.html?source=${item.source}`)
-      } else await item.window.loadFile(join(__dirname, '../renderer/capture/index.html'), { query: { source: item.source } })
+        await item.window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/capture/index.html?${new URLSearchParams(query)}`)
+      } else await item.window.loadFile(join(__dirname, '../renderer/capture/index.html'), { query })
     }))
   } catch { error = 'Could not load an audio capture window'; await close() }
   return { stop }

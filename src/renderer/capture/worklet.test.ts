@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 
-async function processor(source = 0): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
+async function processor(source = 0, micGain?: number): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
+  vi.resetModules()
   const messages: any[] = []
   let Constructor: any
   class Processor {
@@ -15,10 +16,30 @@ async function processor(source = 0): Promise<{ port: { onmessage: (event: { dat
   vi.stubGlobal('sampleRate', 48000)
   vi.stubGlobal('registerProcessor', (_name: string, constructor: any) => { Constructor = constructor })
   await import('./worklet')
-  return Object.assign(new Constructor({ processorOptions: { source } }), { messages })
+  return Object.assign(new Constructor({ processorOptions: { source, micGain } }), { messages })
 }
 
 describe('AudioWorklet lifecycle', () => {
+  it('uses conservative microphone gain and emits upstream level evidence on stop', async () => {
+    const worklet = await processor()
+    for (let i = 0; i < 40; i++) worklet.process([[new Float32Array(128).fill(1)]])
+    worklet.port.onmessage({ data: { type: 'stop' } })
+    expect(worklet.messages.at(-1)).toMatchObject({ type: 'finished', levels: {
+      gain: 0.75, inputSamples: 5120, inputPeak: 1, inputFullScaleSamples: 5120, outputFullScaleSamples: 0
+    } })
+  })
+
+  it('uses explicit mic gain but keeps system gain at unity', async () => {
+    const mic = await processor(0, 0.5)
+    mic.process([[new Float32Array(128).fill(0.2)]])
+    mic.port.onmessage({ data: { type: 'stop' } })
+    expect(mic.messages.at(-1).levels.gain).toBe(0.5)
+    const system = await processor(1, 0.5)
+    system.process([[new Float32Array(128).fill(0.2)]])
+    system.port.onmessage({ data: { type: 'stop' } })
+    expect(system.messages.at(-1).levels.gain).toBe(1)
+  })
+
   it('transfers exact frames, consumes acknowledgements, flushes, and stops processing', async () => {
     const worklet = await processor()
     for (let i = 0; i < 40; i++) worklet.process([[new Float32Array(128).fill(0.1)]])

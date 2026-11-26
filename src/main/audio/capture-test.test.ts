@@ -5,14 +5,26 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ipcChannels } from '../../shared/ipc-channels'
 
 const fake = vi.hoisted(() => ({
+  packaged: false,
+  outputChanged: undefined as (() => void) | undefined,
+  outputFailed: undefined as ((message: string) => void) | undefined,
+  stopMonitor: vi.fn().mockResolvedValue(undefined),
   directory: '', handlers: new Map<string, any>(), windows: [] as any[],
   checkPermission: null as any, requestPermission: null as any, display: null as any,
   getSources: vi.fn().mockResolvedValue([{ id: 'screen:0:0', name: 'Screen' }]),
   dialog: vi.fn()
 }))
 
+vi.mock('./windows-output-monitor', () => ({
+  watchWindowsDefaultOutput: vi.fn(async (_path: string, changed: () => void, failed: (message: string) => void) => {
+    fake.outputChanged = changed
+    fake.outputFailed = failed
+    return { stop: fake.stopMonitor }
+  })
+}))
+
 vi.mock('electron', () => ({
-  app: { getAppPath: () => fake.directory },
+  app: { getAppPath: () => fake.directory, getPath: () => join(fake.directory, 'user-data'), get isPackaged() { return fake.packaged } },
   ipcMain: { handle: (name: string, handler: any) => fake.handlers.set(name, handler), removeHandler: (name: string) => fake.handlers.delete(name) },
   desktopCapturer: { getSources: fake.getSources },
   dialog: { showMessageBox: fake.dialog },
@@ -34,6 +46,9 @@ vi.mock('electron', () => ({
 }))
 
 afterEach(async () => {
+  fake.packaged = false
+  fake.outputChanged = undefined
+  fake.outputFailed = undefined
   vi.useRealTimers()
   if (fake.directory) await rm(fake.directory, { recursive: true, force: true })
   fake.windows.length = 0
@@ -60,6 +75,94 @@ async function finishAll() {
 }
 
 describe('capture coordinator source isolation', () => {
+  it('stops both sources on a native default-output change without a browser devicechange event', async () => {
+    const { test } = await start('both')
+    expect(fake.outputChanged).toBeTypeOf('function')
+    fake.outputChanged!()
+    for (const window of fake.windows) expect(window.webContents.send).toHaveBeenCalledWith(ipcChannels.captureStop)
+    await finishAll()
+    await test.stop()
+    expect(fake.stopMonitor).toHaveBeenCalled()
+    expect(fake.dialog).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      type: 'error', message: expect.stringContaining('Windows default audio output changed')
+    }))
+    expect(fake.windows.every((window) => window.destroyed)).toBe(true)
+  })
+
+  it('stops capture instead of silently losing output-change monitoring', async () => {
+    const { test } = await start('system')
+    fake.outputFailed!('Windows output monitor exited unexpectedly; capture must be restarted')
+    await finishAll()
+    await test.stop()
+    expect(fake.dialog).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      type: 'error', message: expect.stringContaining('monitor exited unexpectedly')
+    }))
+  })
+
+  it('does not load capture pages when native monitoring cannot start', async () => {
+    const { watchWindowsDefaultOutput } = await import('./windows-output-monitor')
+    vi.mocked(watchWindowsDefaultOutput).mockRejectedValueOnce(new Error('missing resource'))
+    const { test } = await start('system')
+    await test.stop()
+    expect(fake.windows[0].loadFile).not.toHaveBeenCalled()
+    expect(fake.windows[0].destroyed).toBe(true)
+    expect(fake.dialog).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({
+      type: 'error', message: expect.stringContaining('monitoring could not start')
+    }))
+  })
+
+  it('does not require a system-output monitor for a microphone-only test', async () => {
+    const { test } = await start('mic')
+    expect(fake.outputChanged).toBeUndefined()
+    await finishAll()
+    await test.stop()
+  })
+
+  it('passes microphone gain separately while system gain remains unity', async () => {
+    vi.stubEnv('VINXA_MIC_GAIN', '0.5')
+    const { test } = await start('both')
+    expect(fake.windows[0].loadFile.mock.calls[0][1].query).toEqual({ source: 'mic', micGain: '0.5' })
+    expect(fake.windows[1].loadFile.mock.calls[0][1].query).toEqual({ source: 'system', micGain: '1' })
+    await finishAll()
+    await test.stop()
+  })
+
+  it('rejects invalid microphone gain without opening files or capture windows', async () => {
+    vi.stubEnv('VINXA_MIC_GAIN', '2')
+    const { test } = await start('mic')
+    expect(test).toBeUndefined()
+    expect(fake.windows).toHaveLength(0)
+    expect(fake.dialog).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ title: 'Invalid microphone gain' }))
+  })
+
+  it('stores packaged diagnostic WAVs under writable user data instead of the ASAR app path', async () => {
+    fake.packaged = true
+    const { test } = await start('mic')
+    await finishAll()
+    await test.stop()
+    expect((await readFile(join(fake.directory, 'user-data/test_recordings/mic.wav'))).length).toBe(44)
+  })
+
+  it('uses acceptance filenames and preserves an existing recording in a configured directory', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'vinxa-acceptance-'))
+    vi.stubEnv('VINXA_CAPTURE_DIR', directory)
+    vi.stubEnv('VINXA_CAPTURE_ACCEPTANCE', '1')
+    try {
+      const { test } = await start('both')
+      await finishAll()
+      await test.stop()
+      const mic = await readFile(join(directory, 'microphone.wav'))
+      const system = await readFile(join(directory, 'system_audio.wav'))
+      expect(mic.length).toBe(44)
+      expect(system.length).toBe(44)
+      const { startCaptureTest } = await import('./capture-test')
+      const again = await startCaptureTest({ isDestroyed: () => false } as any, 'both')
+      expect(again).toBeUndefined()
+      expect(await readFile(join(directory, 'microphone.wav'))).toEqual(mic)
+      expect(await readFile(join(directory, 'system_audio.wav'))).toEqual(system)
+    } finally { await rm(directory, { recursive: true, force: true }) }
+  })
+
   it('grants loopback only to its system renderer and denies untrusted requests', async () => {
     const { test } = await start('system')
     const system = fake.windows[0]

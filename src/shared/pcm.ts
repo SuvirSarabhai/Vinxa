@@ -6,6 +6,30 @@ export function floatToInt16(sample: number): number {
   return Math.round(clipped * (clipped < 0 ? 32768 : 32767))
 }
 
+export const defaultMicrophoneGain = 0.75
+
+export class MicrophoneGainError extends Error {}
+
+export function parseMicrophoneGain(value: unknown = defaultMicrophoneGain): number {
+  const gain = typeof value === 'number' ? value
+    : typeof value === 'string' && value.trim() !== '' ? Number(value) : NaN
+  if (!Number.isFinite(gain) || gain < 0.1 || gain > 1) {
+    throw new MicrophoneGainError('Microphone gain must be a finite number between 0.1 and 1')
+  }
+  return gain
+}
+
+export interface PcmLevels {
+  gain: number
+  inputSamples: number
+  inputPeak: number
+  inputFullScaleSamples: number
+  preGainSamples: number
+  preGainPeak: number
+  preGainFullScaleSamples: number
+  outputFullScaleSamples: number
+}
+
 /** Streaming windowed-sinc resampler. Retains a bounded ring across render quanta. */
 export class PcmEncoder {
   private readonly history = new Float32Array(256)
@@ -15,14 +39,20 @@ export class PcmEncoder {
   private frameOffset = 0
   private ended = false
   private readonly radius = 64
+  private readonly measurements: PcmLevels
 
   constructor(private readonly inputRate: number, private readonly source: 0 | 1,
-    private readonly emit: (frame: ArrayBuffer) => void) {
+    private readonly emit: (frame: ArrayBuffer) => void, microphoneGain = 1) {
     if (!Number.isFinite(inputRate) || inputRate < 8000 || inputRate > 192000) {
       throw new Error('Input sample rate must be between 8000 and 192000 Hz')
     }
+    this.measurements = { gain: source === 0 ? parseMicrophoneGain(microphoneGain) : 1,
+      inputSamples: 0, inputPeak: 0, inputFullScaleSamples: 0,
+      preGainSamples: 0, preGainPeak: 0, preGainFullScaleSamples: 0, outputFullScaleSamples: 0 }
     new Uint8Array(this.frame)[0] = source
   }
+
+  get levels(): Readonly<PcmLevels> { return { ...this.measurements } }
 
   push(channels: readonly Float32Array[]): void {
     if (this.ended) throw new Error('PCM encoder already stopped')
@@ -31,7 +61,15 @@ export class PcmEncoder {
     if (channels.some((channel) => channel.length !== length)) throw new Error('Channel lengths differ')
     for (let index = 0; index < length; index++) {
       let mono = 0
-      for (const channel of channels) mono += channel[index] / channels.length
+      for (const channel of channels) {
+        const sample = channel[index]
+        if (!Number.isFinite(sample)) throw new Error('PCM samples must be finite')
+        const magnitude = Math.abs(sample)
+        this.measurements.inputSamples++
+        this.measurements.inputPeak = Math.max(this.measurements.inputPeak, magnitude)
+        if (magnitude >= 1) this.measurements.inputFullScaleSamples++
+        mono += sample / channels.length
+      }
       if (!Number.isFinite(mono)) throw new Error('PCM samples must be finite')
       this.history[this.inputSamples % this.history.length] = mono
       this.inputSamples++
@@ -71,7 +109,12 @@ export class PcmEncoder {
   }
 
   private writeSample(value: number): void {
-    new DataView(this.frame).setInt16(1 + this.frameOffset * 2, floatToInt16(value), true)
+    this.measurements.preGainSamples++
+    this.measurements.preGainPeak = Math.max(this.measurements.preGainPeak, Math.abs(value))
+    if (Math.abs(value) >= 1) this.measurements.preGainFullScaleSamples++
+    const pcm = floatToInt16(value * this.measurements.gain)
+    if (pcm === -32768 || pcm === 32767) this.measurements.outputFullScaleSamples++
+    new DataView(this.frame).setInt16(1 + this.frameOffset * 2, pcm, true)
     this.frameOffset++
     this.outputSamples++
     if (this.frameOffset === pcmFormat.frameSamples) {

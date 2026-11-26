@@ -1,4 +1,5 @@
 import type { CaptureBridge } from '../../shared/contracts'
+import { MicrophoneGainError, parseMicrophoneGain } from '../../shared/pcm'
 import { sourceIds } from '../../shared/contracts'
 import { audioSourceSchema } from '../../shared/schemas'
 import workletUrl from './worklet.ts?worker&url'
@@ -18,7 +19,8 @@ let paddedSamples = 0
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 
 const bridge = window.vinxaCapture
-const source = audioSourceSchema.parse(new URLSearchParams(globalThis.location?.search ?? '').get('source') ?? 'mic')
+const parameters = new URLSearchParams(globalThis.location?.search ?? '')
+const source = audioSourceSchema.parse(parameters.get('source') ?? 'mic')
 const unsubscribe = bridge.onStop(() => stop())
 
 function stop(error: string | null = null): void {
@@ -49,12 +51,15 @@ async function finish(): Promise<void> {
 }
 
 async function deviceChanged(): Promise<void> {
+  if (source === 'system') {
+    // Hidden documents can be unable to enumerate outputs. Do not wait to stop.
+    stop('Audio devices changed during system capture; check Windows default output and repeat the test')
+    return
+  }
   try {
     const devices = await navigator.mediaDevices.enumerateDevices()
     const id = stream?.getAudioTracks()[0]?.getSettings().deviceId
-    if (source === 'system') {
-      stop('Audio devices changed during system capture; check Windows default output and repeat the test')
-    } else if (id && !devices.some((device) => device.kind === 'audioinput' && device.deviceId === id)) {
+    if (id && !devices.some((device) => device.kind === 'audioinput' && device.deviceId === id)) {
       stop('Microphone was disconnected')
     }
   } catch { stop('Could not verify audio devices after a device change') }
@@ -62,6 +67,7 @@ async function deviceChanged(): Promise<void> {
 
 async function start(): Promise<void> {
   try {
+    const micGain = source === 'mic' ? parseMicrophoneGain(parameters.get('micGain') ?? undefined) : 1
     console.info('[vinxa-capture] requesting stream')
     stream = source === 'mic'
       ? await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
@@ -84,7 +90,7 @@ async function start(): Promise<void> {
     console.info('[vinxa-capture] loading worklet')
     await context.audioWorklet.addModule(workletUrl)
     if (stopping) { started = true; await finish(); return }
-    worklet = new AudioWorkletNode(context, 'vinxa-capture', { processorOptions: { source: sourceIds[source] } })
+    worklet = new AudioWorkletNode(context, 'vinxa-capture', { processorOptions: { source: sourceIds[source], micGain } })
     worklet.onprocessorerror = () => stop(`${source} audio processing failed`)
     worklet.port.onmessage = ({ data }) => {
       if (finished) return
@@ -97,6 +103,12 @@ async function start(): Promise<void> {
           } catch { stop(`Could not write ${source} audio to disk`) }
         })
       } else if (data.type === 'finished') {
+        if (data.levels) {
+          console.info('[vinxa-capture] levels ' + JSON.stringify(data.levels))
+          if (source === 'mic' && data.levels.inputFullScaleSamples > 0) {
+            console.warn('[vinxa-capture] input reached full scale before application gain; lower Windows microphone input volume and repeat. Attenuation cannot restore clipped speech.')
+          }
+        }
         paddedSamples = data.paddedSamples
         void finish()
       } else if (data.type === 'error') {
@@ -118,7 +130,7 @@ async function start(): Promise<void> {
   } catch (error) {
     const name = error instanceof DOMException ? error.name : ''
     const label = source === 'mic' ? 'Microphone' : 'System audio'
-    errorMessage = name === 'NotAllowedError' ? `${label} permission was denied`
+    errorMessage = error instanceof MicrophoneGainError ? error.message : name === 'NotAllowedError' ? `${label} permission was denied`
       : name === 'NotFoundError' ? `No ${source === 'mic' ? 'microphone' : 'system capture device'} is available`
         : `${label} startup failed; check Windows privacy settings and the audio device`
     started = true

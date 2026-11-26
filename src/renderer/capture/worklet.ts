@@ -1,4 +1,4 @@
-import { PcmEncoder } from '../../shared/pcm'
+import { PcmEncoder, parseMicrophoneGain } from '../../shared/pcm'
 import { sourceIds } from '../../shared/contracts'
 
 declare const sampleRate: number
@@ -14,17 +14,18 @@ class CaptureProcessor extends AudioWorkletProcessor {
     super()
     const source = options.processorOptions?.source ?? sourceIds.mic
     if (source !== sourceIds.mic && source !== sourceIds.system) throw new Error('Unsupported PCM source')
+    const micGain = source === sourceIds.mic ? parseMicrophoneGain(options.processorOptions?.micGain) : 1
     this.encoder = new PcmEncoder(sampleRate, source, (frame) => {
       if (this.outstanding >= 4) throw new Error('Audio IPC did not keep up with capture')
       this.outstanding++
       this.port.postMessage({ type: 'frame', frame }, [frame])
-    })
+    }, micGain)
     this.port.onmessage = ({ data }) => {
       if (data.type === 'ack') this.outstanding--
       if (data.type === 'stop' && !this.stopped) {
         try {
           const paddedSamples = this.encoder.finish()
-          this.port.postMessage({ type: 'finished', paddedSamples })
+          this.port.postMessage({ type: 'finished', paddedSamples, levels: this.encoder.levels })
         } catch {
           this.port.postMessage({ type: 'error' })
         }

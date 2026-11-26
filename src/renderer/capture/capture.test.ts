@@ -31,7 +31,7 @@ function setup(source = 'mic') {
     }
     connect = vi.fn()
     disconnect = disconnect
-    constructor() { node = this }
+    constructor(_context: unknown, _name: string, readonly options: AudioWorkletNodeOptions) { node = this }
   }
   vi.stubGlobal('window', { vinxaCapture: {
     onStop: (listener: () => void) => { stop = listener; return vi.fn() },
@@ -48,6 +48,40 @@ function setup(source = 'mic') {
 }
 
 describe('hidden microphone capture lifecycle', () => {
+  it('passes configured gain to mic worklet and ignores it for system capture', async () => {
+    const test = setup('mic&micGain=0.5')
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    expect(test.node().options.processorOptions).toEqual({ source: 0, micGain: 0.5 })
+    test.stop()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalled())
+  })
+
+  it('rejects invalid microphone gain before acquiring an input track', async () => {
+    const test = setup('mic&micGain=invalid')
+    await import('./capture')
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({
+      error: 'Microphone gain must be a finite number between 0.1 and 1', paddedSamples: 0
+    }))
+    expect(test.getUserMedia).not.toHaveBeenCalled()
+    expect(test.node()).toBeUndefined()
+  })
+
+  it('warns about saturated input without changing the public completion payload', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const test = setup()
+      await import('./capture')
+      await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+      const levels = { gain: 0.75, inputPeak: 1, inputFullScaleSamples: 3, outputFullScaleSamples: 0 }
+      test.node().port.onmessage({ data: { type: 'finished', paddedSamples: 0, levels } })
+      await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({ error: null, paddedSamples: 0 }))
+      expect(info).toHaveBeenCalledWith('[vinxa-capture] levels ' + JSON.stringify(levels))
+      expect(warning).toHaveBeenCalledWith(expect.stringContaining('Attenuation cannot restore clipped speech'))
+    } finally { info.mockRestore(); warning.mockRestore() }
+  })
+
   it('writes frames then closes the track, context, and port before reporting completion', async () => {
     const test = setup()
     await import('./capture')
@@ -87,6 +121,7 @@ describe('hidden microphone capture lifecycle', () => {
     await import('./capture')
     await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
     expect(test.getDisplayMedia).toHaveBeenCalledWith({ audio: true, video: true })
+    expect(test.node().options.processorOptions).toEqual({ source: 1, micGain: 1 })
     expect(test.getUserMedia).not.toHaveBeenCalled()
     expect(test.stopVideo).toHaveBeenCalledOnce()
     test.stop()
@@ -122,6 +157,20 @@ describe('hidden microphone capture lifecycle', () => {
     await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({
       error: 'Audio devices changed during system capture; check Windows default output and repeat the test', paddedSamples: 0
     }))
+    expect(test.stopTrack).toHaveBeenCalled()
+  })
+
+  it('stops on a system devicechange even if hidden-window enumeration would never resolve', async () => {
+    const test = setup('system')
+    vi.mocked(navigator.mediaDevices.enumerateDevices).mockReturnValue(new Promise(() => {}))
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    const listener = vi.mocked(navigator.mediaDevices.addEventListener).mock.calls[0][1] as () => Promise<void>
+    await listener()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({
+      error: 'Audio devices changed during system capture; check Windows default output and repeat the test', paddedSamples: 0
+    }))
+    expect(navigator.mediaDevices.enumerateDevices).not.toHaveBeenCalled()
     expect(test.stopTrack).toHaveBeenCalled()
   })
 })
