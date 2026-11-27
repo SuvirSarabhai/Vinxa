@@ -1,18 +1,35 @@
 const assert = require('node:assert/strict')
 const { join, dirname, resolve } = require('node:path')
-const { writeFile } = require('node:fs/promises')
+const { mkdir, writeFile } = require('node:fs/promises')
 const { _electron } = require('playwright-core')
 
 async function main() {
+  const argumentsList = process.argv.slice(2)
+  const executableIndex = argumentsList.indexOf('--executable')
+  let packagedExecutable
+  if (executableIndex >= 0) {
+    assert.ok(argumentsList[executableIndex + 1], 'Provide an executable after --executable')
+    packagedExecutable = resolve(argumentsList[executableIndex + 1])
+    argumentsList.splice(executableIndex, 2)
+  }
+  assert.ok(argumentsList.length <= 1, 'Provide at most one report path')
+  const reportPath = argumentsList[0] ? resolve(argumentsList[0]) : undefined
   const environment = { ...process.env }
-  if (process.argv[2]) environment.VINXA_DIAGNOSTICS_DIR = dirname(resolve(process.argv[2]))
+  environment.VINXA_BACKEND = 'local'
+  if (reportPath) { await mkdir(dirname(reportPath), { recursive: true }); environment.VINXA_DIAGNOSTICS_DIR = dirname(reportPath) }
   delete environment.ELECTRON_RUN_AS_NODE
   delete environment.VINXA_CAPTURE_TEST
   delete environment.VINXA_CAPTURE_SPEECH
-  const desktop = await _electron.launch({ executablePath: join(process.cwd(), 'node_modules/electron/dist/electron.exe'),
-    args: ['.'], env: environment, timeout: 30000 })
+  if (packagedExecutable) {
+    delete environment.VINXA_SIDECAR_SOURCE
+    delete environment.VINXA_SIDECAR_PYTHON
+    delete environment.VINXA_SPEECH_MODEL_PATH
+  }
+  const desktop = await _electron.launch({ executablePath: packagedExecutable || join(process.cwd(), 'node_modules/electron/dist/electron.exe'),
+    args: packagedExecutable ? [] : ['.'], env: environment, timeout: 30000 })
   const observed = []
   try {
+    if (packagedExecutable) assert.equal(await desktop.evaluate(({ app }) => app.isPackaged), true)
     const page = await desktop.firstWindow()
     await desktop.evaluate(({ BrowserWindow }) => { for (const window of BrowserWindow.getAllWindows()) window.hide() })
     const result = await page.evaluate(() => new Promise((resolve, reject) => {
@@ -31,8 +48,8 @@ async function main() {
   } finally {
     await desktop.close()
   }
-  const report = { status: 'DONE', readiness: 'PASS', appExit: 'PASS', audioCapture: 'not requested', observed }
-  if (process.argv[2]) await writeFile(process.argv[2], JSON.stringify(report, null, 2) + '\n', { flag: 'wx' })
+  const report = { status: 'DONE', readiness: 'PASS', appExit: 'PASS', packaged: Boolean(packagedExecutable), audioCapture: 'not requested', observed }
+  if (reportPath) await writeFile(reportPath, JSON.stringify(report, null, 2) + '\n', { flag: 'wx' })
   console.log(JSON.stringify(report))
 }
 

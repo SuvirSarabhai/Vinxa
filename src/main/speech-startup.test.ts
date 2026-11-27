@@ -28,6 +28,8 @@ beforeEach(() => {
   fake.capture.mockResolvedValue({ stop: fake.captureStop })
   fake.installPhase2.mockReturnValue(fake.disposePhase2)
   vi.stubEnv('VINXA_CAPTURE_TEST', '')
+  vi.stubEnv('VINXA_BACKEND', 'local')
+  vi.stubEnv('VINXA_CAPTURE_SPEECH', '')
 })
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
@@ -64,4 +66,24 @@ it('shuts down speech even if diagnostic capture cleanup fails', async () => {
   expect(fake.captureStop).toHaveBeenCalledOnce()
   expect(fake.shutdown).toHaveBeenCalledOnce()
   expect(logged).toHaveBeenCalledWith('Local speech shutdown did not finish normally')
+})
+
+it('awaits UI capture disposal before shutting down the speech process', async () => {
+  let finishCapture!: () => void
+  fake.disposePhase2.mockReturnValueOnce(new Promise<void>((resolve) => { finishCapture = resolve }))
+  await import('./index')
+  await vi.waitFor(() => expect(fake.installPhase2).toHaveBeenCalledOnce())
+  fake.handlers.get('before-quit')({ preventDefault: vi.fn() })
+  await Promise.resolve()
+  expect(fake.shutdown).not.toHaveBeenCalled()
+  finishCapture()
+  await vi.waitFor(() => expect(fake.shutdown).toHaveBeenCalledOnce())
+  await vi.waitFor(() => expect(fake.quit).toHaveBeenCalledOnce())
+})
+
+it('keeps the explicitly selected demo independent of Python warm-up', async () => {
+  vi.stubEnv('VINXA_BACKEND', 'demo')
+  await import('./index')
+  await vi.waitFor(() => expect(fake.installPhase2).toHaveBeenCalledOnce())
+  expect(fake.initialize).not.toHaveBeenCalled()
 })

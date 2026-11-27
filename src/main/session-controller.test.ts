@@ -23,6 +23,25 @@ function harness(saveConsent = vi.fn<(record: ConsentRecord) => Promise<void>>()
 }
 
 describe('SessionController', () => {
+  it('publishes real session times, retains the clock through pauses, and freezes it on Stop', async () => {
+    const target = harness()
+    target.controller.requestStart()
+    await target.controller.confirm(config, true)
+    expect(target.controller.snapshot()).toMatchObject({ startedAtMs: 1000, endedAtMs: null })
+    target.time(2500)
+    await target.controller.pauseResume()
+    target.time(4000)
+    await target.controller.pauseResume()
+    expect(target.controller.snapshot()).toMatchObject({ startedAtMs: 1000, endedAtMs: null })
+    target.time(6000)
+    await target.controller.stop()
+    target.time(9000)
+    expect(target.controller.snapshot()).toMatchObject({ state: 'completed', startedAtMs: 1000, endedAtMs: 6000 })
+    target.controller.requestStart()
+    await target.controller.confirm(config, true)
+    expect(target.controller.snapshot()).toMatchObject({ startedAtMs: 9000, endedAtMs: null })
+    await target.controller.stop()
+  })
   it('requires a start request and explicit consent before calling the backend', async () => {
     const target = harness()
     await expect(target.controller.confirm(config, true)).rejects.toThrow('Start a session')
@@ -117,5 +136,32 @@ describe('SessionController', () => {
     const copy = target.controller.snapshot()
     copy.config.title = 'Changed outside controller'
     expect(target.controller.snapshot().config.title).toBe('Test meeting')
+  })
+
+  it('accepts revised provisional timing and removes an empty cancellation final', async () => {
+    const target = harness()
+    target.controller.requestStart()
+    await target.controller.confirm(config, true)
+    const partial = { id: 'partial', meetingId: target.sessionId(), source: 'mic' as const, speakerId: null,
+      text: 'Unconfirmed', startMs: 0, endMs: 100, isFinal: false }
+    target.events().transcript(partial)
+    target.events().transcript({ ...partial, startMs: 10, text: 'Revised' })
+    expect(target.controller.snapshot().segments[0].startMs).toBe(10)
+    target.events().transcript({ ...partial, text: '', isFinal: true })
+    expect(target.controller.snapshot().segments).toEqual([])
+  })
+
+  it('preserves finals and removes provisional text if Stop cannot complete', async () => {
+    const target = harness()
+    target.controller.requestStart()
+    await target.controller.confirm(config, true)
+    const segment = { id: 'final', meetingId: target.sessionId(), source: 'mic' as const, speakerId: null,
+      text: 'Retained', startMs: 0, endMs: 100, isFinal: true }
+    target.events().transcript(segment)
+    target.events().transcript({ ...segment, id: 'partial', text: 'Unconfirmed', isFinal: false })
+    target.backend.stop.mockRejectedValueOnce(new Error('Transport failed'))
+    await expect(target.controller.stop()).rejects.toThrow('could not stop cleanly')
+    expect(target.controller.snapshot().state).toBe('error')
+    expect(target.controller.snapshot().segments.map((value) => value.id)).toEqual(['final'])
   })
 })

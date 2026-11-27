@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { PassThrough } from 'node:stream'
+import { setTimeout as delay } from 'node:timers/promises'
 import { randomUUID } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { SidecarManager } from './sidecar-manager'
@@ -16,6 +17,9 @@ class Socket extends EventTarget {
   bufferedAmount = 0
   messages: Array<string | Uint8Array> = []
   configuration: any
+  heldTypes = new Set<string>()
+  held: any[] = []
+  withholdSessionReady = false
   open(): void { this.readyState = 1; this.dispatchEvent(new Event('open')) }
   event(payload: unknown): void { this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(payload) })) }
   send(data: string | Uint8Array): void {
@@ -25,8 +29,33 @@ class Socket extends EventTarget {
     if (message.type === 'config') {
       this.configuration = message
       this.event({ type: 'status', sessionId: message.sessionId, generation: message.generation, status: 'ready' })
+    } else if (this.heldTypes.has(message.type)) this.held.push(message)
+    else this.reply(message)
+  }
+  reply(message: any): void {
+    if (message.type === 'clock-sync') {
+      // Protocol 2 requires timestamped exchanges before readiness. A generic
+      // acknowledgement leaves synchronizeClock() with no usable samples.
+      const serverReceiveMs = performance.now()
+      this.event({ type: 'status', sessionId: message.sessionId, generation: message.generation,
+        requestId: message.requestId, status: 'ready', clock: {
+          clientSendMs: message.clientSendMs, serverReceiveMs, serverSendMs: serverReceiveMs
+        } })
+    } else if (message.type === 'session-begin') {
+      queueMicrotask(() => {
+        this.event({ type: 'status', sessionId: message.sessionId, generation: message.generation,
+          requestId: message.requestId, status: 'ready' })
+        this.configuration.sessionId = message.nextSessionId
+        if (!this.withholdSessionReady) this.event({ type: 'status', sessionId: message.nextSessionId, generation: message.generation, status: 'ready' })
+      })
     } else this.event({ type: 'status', sessionId: message.sessionId, generation: message.generation,
-      requestId: message.requestId, status: message.type === 'stop' ? 'stopped' : 'ready' })
+      requestId: message.requestId, status: message.type === 'stop' ? 'stopped' : message.type === 'session-end' ? 'standby' : 'ready' })
+  }
+  release(type: string): void {
+    this.heldTypes.delete(type)
+    const pending = this.held.filter((message) => message.type === type)
+    this.held = this.held.filter((message) => message.type !== type)
+    for (const message of pending) this.reply(message)
   }
   close(): void { this.readyState = 3; this.dispatchEvent(new Event('close')) }
 }
@@ -131,5 +160,113 @@ describe('sidecar supervisor', () => {
     expect(controls.filter((m) => m.type === 'source-start').map((m) => m.startSample)).toEqual([0, 64000])
     expect(controls.find((m) => m.type === 'source-end').paddedSamples).toBe(123)
     await test.manager.stop()
+  })
+
+  it('sends a source-gap control before the first timed packet after a graph interruption', async () => {
+    const test = setup({ protocolVersion: 2 })
+    const start = test.manager.start(test.session)
+    try {
+      test.ready(); await start
+      const controls = test.sockets[0].messages.filter((message): message is string => typeof message === 'string')
+        .map((message) => JSON.parse(message))
+      expect(controls.filter((message) => message.type === 'clock-sync')).toHaveLength(3)
+      const clockSets = controls.filter((message) => message.type === 'clock-set')
+      expect(clockSets).toHaveLength(1)
+      expect(Number.isFinite(clockSets[0].offsetMs)).toBe(true)
+      expect(clockSets[0].uncertaintyMs).toBeGreaterThanOrEqual(0)
+      expect(test.onError).not.toHaveBeenCalled()
+      for (const [sequence, startSample] of [[0, 0], [1, 16000], [2, 17600]]) {
+        expect(test.manager.sendFrame('mic', new Uint8Array(3200), { sequence, startSample,
+          captureTimeMs: 100 + startSample / 16, captureErrorMs: 1, sampleCount: 1600,
+          captureKind: 'render-estimate' })).toBe(true)
+      }
+      const messages = test.sockets[0].messages
+      const gapIndex = messages.findIndex((message) => typeof message === 'string' && JSON.parse(message).type === 'source-gap')
+      expect(gapIndex).toBeGreaterThan(0)
+      expect(JSON.parse(messages[gapIndex] as string)).toMatchObject({ source: 'mic', startSample: 16000, droppedSamples: 14400 })
+      const resumed = messages[gapIndex + 1] as Uint8Array
+      expect(resumed).toBeInstanceOf(Uint8Array)
+      const header = new DataView(resumed.buffer, resumed.byteOffset)
+      expect(header.getUint32(4, true)).toBe(1)
+      expect(header.getFloat64(8, true)).toBe(16000)
+      expect(messages.filter((message) => message instanceof Uint8Array)).toHaveLength(3)
+      expect(test.manager.ready).toBe(true)
+      expect(test.children).toHaveLength(1)
+      await test.manager.sourceEnd('mic', 0)
+    } finally { await test.manager.stop() }
+  })
+
+  it.each(['pause', 'session-end'] as const)('keeps an existing heartbeat alive while %s drains, then resumes health checks', async (control) => {
+    const test = setup({ keepWarm: true, healthMs: 10, requestMs: 30 })
+    const warm = test.manager.prewarm()
+    test.ready(); await warm
+    await test.manager.start(test.session)
+    const socket = test.sockets[0]
+    socket.heldTypes.add('ping')
+    socket.heldTypes.add(control)
+    try {
+      await vi.waitFor(() => expect(socket.held.some((message) => message.type === 'ping')).toBe(true), { interval: 1, timeout: 200 })
+      const operation = control === 'pause' ? test.manager.pause() : test.manager.endSession()
+      void operation.catch(() => undefined)
+      await vi.waitFor(() => expect(socket.held.some((message) => message.type === control)).toBe(true), { interval: 1 })
+      await delay(120)
+      expect(test.children).toHaveLength(1)
+      expect(test.onError).not.toHaveBeenCalled()
+      expect(socket.held.filter((message) => message.type === 'ping')).toHaveLength(1)
+      socket.release(control)
+      socket.release('ping')
+      await operation
+      await vi.waitFor(() => expect(socket.messages.filter((message) => typeof message === 'string' && JSON.parse(message).type === 'ping').length).toBeGreaterThan(1), { interval: 1 })
+      if (control === 'pause') await test.manager.resume()
+      else await test.manager.start({ ...test.session, sessionId: randomUUID() })
+      expect(test.manager.ready).toBe(true)
+    } finally { await test.manager.stop() }
+  })
+
+  it('still times out a stuck lifecycle control while heartbeat deadlines are deferred', async () => {
+    const test = setup({ healthMs: 10, requestMs: 20, finalizationMs: 50 })
+    const start = test.manager.start(test.session)
+    test.ready(); await start
+    const socket = test.sockets[0]
+    socket.heldTypes.add('pause')
+    try {
+      await expect(test.manager.pause()).rejects.toThrow('timed out')
+      expect(test.children).toHaveLength(1)
+    } finally { await test.manager.stop() }
+  })
+
+  it('shares a concurrent shutdown instead of sending duplicate stop controls', async () => {
+    const test = setup()
+    const start = test.manager.start(test.session)
+    test.ready(); await start
+    const socket = test.sockets[0]
+    socket.heldTypes.add('stop')
+    const first = test.manager.stop()
+    const second = test.manager.stop()
+    expect(first).toBe(second)
+    await vi.waitFor(() => expect(socket.held.filter((message) => message.type === 'stop')).toHaveLength(1))
+    socket.release('stop')
+    await Promise.all([first, second])
+    expect(test.children[0].kill).toHaveBeenCalledOnce()
+  })
+
+  it('still detects an unhealthy idle engine outside a lifecycle operation', async () => {
+    const test = setup({ healthMs: 10, requestMs: 20, maxRestarts: 0 })
+    const start = test.manager.start(test.session)
+    test.ready(); await start
+    test.sockets[0].heldTypes.add('ping')
+    try {
+      await vi.waitFor(() => expect(test.onError.mock.calls.some(([event]) => event.code === 'RESTART_LIMIT')).toBe(true), { interval: 1 })
+      expect(test.manager.ready).toBe(false)
+    } finally { await test.manager.stop() }
+  })
+
+  it('bounds readiness after a warm session-begin acknowledgement', async () => {
+    const test = setup({ keepWarm: true, readyMs: 50 })
+    const warm = test.manager.prewarm()
+    test.ready(); await warm
+    test.sockets[0].withholdSessionReady = true
+    try { await expect(test.manager.start(test.session)).rejects.toThrow('readiness timed out') }
+    finally { await test.manager.stop() }
   })
 })

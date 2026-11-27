@@ -3,6 +3,10 @@
 Implementation added for the parallel-build plan. Build and test commands have
 not been run for these changes; the user will run the checks below.
 
+The newly pulled Developer B Phase 2 service is now connected locally. Live mode
+is the default; this guide's fixture checks require VINXA_BACKEND=demo. See
+[live integration setup and validation](phase2-local-integration.md).
+
 ## Current behavior
 
 The library screen, tray, and global Start shortcut all enter the same consent
@@ -11,7 +15,7 @@ source toggles, and explicit consent. Device enumeration does not open an audio
 stream or ask for recording permission. Available device labels depend on the
 existing Windows/Chromium permissions.
 
-The default backend replays the existing written fixture; it records no audio,
+The explicitly selected demo backend replays the existing written fixture; it records no audio,
 contacts no speech service, and generates no notes. The UI, overlay, tray tooltip,
 and consent receipt identify demo mode. Audio meters remain unavailable rather
 than displaying invented activity. The demo announcement explicitly says that
@@ -66,6 +70,8 @@ when evaluating global shortcut conflicts.
 cd "D:\Python Workspace\Vinxa"
 pnpm typecheck
 pnpm test
+$env:VINXA_BACKEND = 'demo'
+Remove-Item Env:VINXA_CAPTURE_TEST -ErrorAction SilentlyContinue
 pnpm dev
 ```
 
@@ -82,7 +88,8 @@ pnpm smoke:win "D:\Python Workspace\Vinxa\release\win-unpacked\Vinxa Desktop.exe
 
 package:win includes the production build. An optional faster bundle-only check
 is pnpm build. If dependencies are not installed, run pnpm install --frozen-lockfile
-before the other commands. No Python environment or API key is needed.
+before the other commands. These demo checks need no Python or API key. Live
+mode needs the Python/cache setup from the integration guide.
 
 The smoke script launches the actual packaged app, creates demo consent receipts,
 copies dummy transcript text to the clipboard, writes release/phase-2-smoke.png,
@@ -120,15 +127,16 @@ and exits. It tests programmatic close-to-tray, not the known native X mouse iss
 The 27 November local integration brought in origin/main at 0984a0f, including
 Developer B's Phase 1 diagnostics, standalone selected-output fallback, and WAV
 speech engine. VINXA_CAPTURE_TEST selects the dedicated diagnostic screen;
-without it the app uses the Phase 2 demo. Both remain intentionally separate.
+without it the app uses live speech unless VINXA_BACKEND=demo. The diagnostic
+and normal session controllers remain separate.
 The capture renderer entry, native monitor packaging resource, capture preload
 bridge, and quit-time WAV finalization are preserved. Shared binary source ids
 are 0 for microphone and 1 for system audio, with 3,201 bytes per tagged frame.
 
-Replace createDemoBackend with an implementation of RecordingBackend and pass
-it as the fourth argument to installPhase2. Use mode local only for a real local
-pipeline. start must resolve when capture is running; failure before that must
-reject. Do not start capture outside the controller's post-consent start call.
+createSpeechBackend now implements RecordingBackend using the pulled SpeechService
+and RecordingSpeechBridge. RecordingCapture supplies real timed audio through the
+existing capture renderer and worklet. The SessionController supplies consent and
+state authorization. Capture starts only after the consent receipt is saved.
 
 pause must stop capture/writes and flush any pending results before resolving;
 resume restarts capture. stop must be idempotent and finish publishing final

@@ -11,6 +11,10 @@ extraResources:
     to: tray.ico
   - from: resources/audio/default-output.ps1
     to: audio/default-output.ps1
+  - from: build/sidecar
+    to: sidecar
+    filter:
+      - "**/*"
 asarUnpack:
   - "**/*.node"
 win:

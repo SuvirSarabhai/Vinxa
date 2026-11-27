@@ -2,6 +2,11 @@
 
 Status DONE for backend implementation and automated bridge checks. Overlay, hotkeys, consent-owner UI, recording indicators and installed runtime adoption remain Developer A integration work. Fresh-call validation is MANUAL-PENDING and deferred to the final Phase 2 validation pass.
 
+Local follow-up: Developer A's normal consent/controller/overlay now adopts this
+service. See [the local integration guide](phase2-local-integration.md). These
+additional integration changes have not been executed or tested by the agent;
+the backend's previously recorded results are not a result for this working tree.
+
 ## App lifecycle
 
 The normal main-process entry initializes SpeechService after creating the window. Model loading and synthetic warm-up run asynchronously in the owned sidecar. Engine status arrives through the existing onEngineStatus subscription. Late subscribers receive the cached status.

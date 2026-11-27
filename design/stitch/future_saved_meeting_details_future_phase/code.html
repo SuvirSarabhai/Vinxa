@@ -1,0 +1,281 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Future Saved Meeting Details (Future Phase)</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-[1024px] flex flex-col" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+  <!-- Windows Titlebar -->
+  <div class="h-9 bg-surface-nav border-b border-border-neutral px-md flex items-center justify-between select-none">
+    <div class="flex items-center gap-sm">
+      <span class="w-5 h-5 rounded-xs bg-primary text-on-primary flex items-center justify-center font-headline text-label-sm font-bold">V</span>
+      <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal">Vinxa — Saved Meeting Details (Future phase concept)</span>
+    </div>
+    <div class="flex items-center gap-xs text-text-secondary">
+      <button type="button" aria-label="Minimize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">remove</span>
+      </button>
+      <button type="button" aria-label="Maximize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">crop_square</span>
+      </button>
+      <button type="button" aria-label="Close window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-error hover:text-on-error">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Future Phase Notice Banner -->
+  <div class="bg-surface-nav border-b border-border-neutral px-lg py-sm flex items-center justify-between gap-md">
+    <div class="flex items-center gap-sm">
+      <span class="px-sm py-0.5 rounded-full bg-surface text-text-secondary border border-border-neutral font-label text-label-sm">Future phase</span>
+      <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">
+        Saved transcripts, AI summaries, decisions, and action items are future-phase concepts and not active in Phase 2 Demo.
+      </p>
+    </div>
+  </div>
+
+  <main class="flex-1 max-w-[1200px] w-full mx-auto p-lg flex flex-col gap-lg">
+
+    <!-- Meeting Header & Actions -->
+    <section class="bg-surface border border-border-neutral rounded-lg p-lg shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-wrap items-start justify-between gap-md">
+      <div class="flex flex-col gap-xs">
+        <div class="flex items-center gap-sm">
+          <button type="button" class="inline-flex items-center gap-xs text-text-secondary hover:text-heading-teal font-label text-label-sm">
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">arrow_back</span>
+            <span>Meeting Library</span>
+          </button>
+        </div>
+        <h1 data-design-text-token="headline-lg" class="font-headline text-headline-lg text-heading-teal mt-xs">Product Architecture Sync</h1>
+        <div class="flex flex-wrap items-center gap-md text-text-secondary">
+          <span data-design-text-token="body-sm" class="font-body text-body-sm tabular-nums">Nov 24, 2026 · 10:00 AM</span>
+          <span data-design-text-token="body-sm" class="font-body text-body-sm tabular-nums">Duration: 32:14</span>
+          <span data-design-text-token="body-sm" class="font-body text-body-sm">Sources: Microphone + System Audio</span>
+          <span class="px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal font-label text-label-sm">Completed</span>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-sm">
+        <button type="button" class="inline-flex items-center gap-xs px-md py-sm rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav font-label text-label-md">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">download</span>
+          <span>Export</span>
+        </button>
+        <button type="button" class="inline-flex items-center gap-xs px-md py-sm rounded-sm bg-recording-container text-on-recording-container hover:bg-recording hover:text-on-recording font-label text-label-md">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">delete</span>
+          <span>Delete</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Tabs Container -->
+    <section class="bg-surface border border-border-neutral rounded-lg shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col flex-1">
+      <div role="tablist" aria-label="Saved meeting sections" class="px-lg pt-sm border-b border-border-neutral flex items-center gap-sm">
+        <button role="tab" data-tab="transcript" aria-selected="false" class="detail-tab px-md py-sm border-b-2 border-transparent text-text-secondary hover:text-heading-teal font-label text-label-md">Transcript</button>
+        <button role="tab" data-tab="summary" aria-selected="false" class="detail-tab px-md py-sm border-b-2 border-transparent text-text-secondary hover:text-heading-teal font-label text-label-md">Summary</button>
+        <button role="tab" data-tab="decisions" aria-selected="false" class="detail-tab px-md py-sm border-b-2 border-transparent text-text-secondary hover:text-heading-teal font-label text-label-md">Decisions</button>
+        <button role="tab" data-tab="actions" aria-selected="true" class="detail-tab px-md py-sm border-b-2 border-primary text-heading-teal font-label text-label-lg">Action Items</button>
+      </div>
+
+      <!-- Tab: Transcript -->
+      <div id="panel-transcript" role="tabpanel" class="hidden p-lg flex flex-col gap-md">
+        <div class="flex items-start gap-md">
+          <span class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5">00:12</span>
+          <div>
+            <span class="px-sm py-0.5 rounded-xs bg-surface-mint text-heading-teal font-label text-label-sm mr-xs">You</span>
+            <p class="font-body text-body-md text-on-surface mt-xs">Let&#39;s confirm the local Whisper model latency before we ship the Windows desktop build.</p>
+          </div>
+        </div>
+        <div class="flex items-start gap-md">
+          <span class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5">00:28</span>
+          <div>
+            <span class="px-sm py-0.5 rounded-xs bg-surface-subtle border border-border-neutral text-heading-teal font-label text-label-sm mr-xs">Remote</span>
+            <p class="font-body text-body-md text-on-surface mt-xs">Silero VAD filters silence cleanly, so partial lines settle in under 400 milliseconds on CPU.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab: Summary -->
+      <div id="panel-summary" role="tabpanel" class="hidden p-lg flex flex-col gap-md max-w-prose">
+        <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Session summary</h2>
+        <p data-design-text-token="body-md" class="font-body text-body-md text-on-surface">
+          The team reviewed local speech-to-text latency using faster-whisper and Silero VAD on Windows. Consent flow requirements and overlay ergonomics were finalized for the Phase 2 desktop release.
+        </p>
+      </div>
+
+      <!-- Tab: Decisions -->
+      <div id="panel-decisions" role="tabpanel" class="hidden p-lg flex flex-col gap-sm max-w-prose">
+        <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal mb-xs">Recorded decisions</h2>
+        <div class="p-md rounded-md bg-surface-nav border border-border-neutral">
+          <p data-design-text-token="body-md" class="font-body text-body-md text-heading-teal">Keep participant consent confirmation mandatory before activating any audio meters.</p>
+        </div>
+        <div class="p-md rounded-md bg-surface-nav border border-border-neutral">
+          <p data-design-text-token="body-md" class="font-body text-body-md text-heading-teal">Default floating overlay to 95% opacity with a thin mint border for legibility over slides.</p>
+        </div>
+      </div>
+
+      <!-- Tab: Action Items (default visible so owner, due date, Not specified, and checkboxes are immediately clear) -->
+      <div id="panel-actions" role="tabpanel" class="p-lg flex flex-col gap-md">
+        <div class="flex items-center justify-between">
+          <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Action items</h2>
+          <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">3 items</span>
+        </div>
+
+        <div class="border border-border-neutral rounded-md divide-y divide-border-neutral">
+          <label class="p-md flex items-center justify-between gap-md hover:bg-surface-nav/50 cursor-pointer">
+            <div class="flex items-center gap-md">
+              <input type="checkbox" class="w-4 h-4 rounded-xs border-border-neutral text-primary focus:ring-primary">
+              <span data-design-text-token="body-md" class="font-body text-body-md text-on-surface">Verify Ctrl+Alt+P global shortcut conflict handling in Settings</span>
+            </div>
+            <div class="flex items-center gap-lg shrink-0 text-body-sm">
+              <span class="text-heading-teal font-label text-label-sm">Owner: Maya Chen</span>
+              <span class="text-text-secondary tabular-nums">Due: Nov 29, 2026</span>
+            </div>
+          </label>
+
+          <label class="p-md flex items-center justify-between gap-md hover:bg-surface-nav/50 cursor-pointer">
+            <div class="flex items-center gap-md">
+              <input type="checkbox" checked class="w-4 h-4 rounded-xs border-border-neutral text-primary focus:ring-primary">
+              <span data-design-text-token="body-md" class="font-body text-body-md text-text-secondary line-through">Add meeting-app mute clarification to Setup and Consent dialog</span>
+            </div>
+            <div class="flex items-center gap-lg shrink-0 text-body-sm">
+              <span class="text-heading-teal font-label text-label-sm">Owner: Alex Rivera</span>
+              <span class="text-text-secondary tabular-nums">Due: Nov 25, 2026</span>
+            </div>
+          </label>
+
+          <label class="p-md flex items-center justify-between gap-md hover:bg-surface-nav/50 cursor-pointer">
+            <div class="flex items-center gap-md">
+              <input type="checkbox" class="w-4 h-4 rounded-xs border-border-neutral text-primary focus:ring-primary">
+              <span data-design-text-token="body-md" class="font-body text-body-md text-on-surface">Benchmark Silero VAD memory usage on 8GB Windows laptops</span>
+            </div>
+            <div class="flex items-center gap-lg shrink-0 text-body-sm">
+              <span class="text-text-secondary font-label text-label-sm">Owner: Not specified</span>
+              <span class="text-text-secondary">Due: Not specified</span>
+            </div>
+          </label>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    document.querySelectorAll('.detail-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.detail-tab').forEach(t => {
+          const active = t.dataset.tab === target;
+          t.setAttribute('aria-selected', active ? 'true' : 'false');
+          t.className = active
+            ? 'detail-tab px-md py-sm border-b-2 border-primary text-heading-teal font-label text-label-lg'
+            : 'detail-tab px-md py-sm border-b-2 border-transparent text-text-secondary hover:text-heading-teal font-label text-label-md';
+        });
+        ['transcript', 'summary', 'decisions', 'actions'].forEach(p => {
+          document.getElementById('panel-' + p).classList.toggle('hidden', p !== target);
+        });
+      });
+    });
+  </script>
+
+
+</body></html>

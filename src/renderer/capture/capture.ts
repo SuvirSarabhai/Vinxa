@@ -24,6 +24,7 @@ let rendererToMainMs = 0
 let clockErrorMs = 0
 let sessionStartMs = 0
 let firstFrameSample: number | undefined
+let firstAudioTime: number | undefined
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 
 const bridge = window.vinxaCapture
@@ -78,7 +79,10 @@ async function start(): Promise<void> {
     const micGain = source === 'mic' ? parseMicrophoneGain(parameters.get('micGain') ?? undefined) : 1
     console.info('[vinxa-capture] requesting stream')
     stream = source === 'mic'
-      ? await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      ? await navigator.mediaDevices.getUserMedia({
+          audio: parameters.get('microphoneDeviceId') ? { deviceId: { exact: parameters.get('microphoneDeviceId')! } } : true,
+          video: false
+        })
       : await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true })
     console.info('[vinxa-capture] stream acquired')
     // Chromium requires a video source for display capture. Its track is discarded immediately.
@@ -94,7 +98,12 @@ async function start(): Promise<void> {
     if (track.readyState === 'ended') throw new Error('Capture track has already ended')
     track.addEventListener('ended', () => stop(`${source} audio track ended`), { once: true })
     navigator.mediaDevices.addEventListener('devicechange', deviceChanged)
-    context = new AudioContext()
+    try {
+      context = new AudioContext({ sampleRate: 16000, latencyHint: 'interactive' })
+    } catch (error) {
+      if (!(error instanceof DOMException) || error.name !== 'NotSupportedError') throw error
+      context = new AudioContext({ latencyHint: 'interactive' })
+    }
     console.info('[vinxa-capture] loading worklet')
     await context.audioWorklet.addModule(workletUrl)
     if (stopping) { started = true; await finish(); return }
@@ -124,11 +133,15 @@ async function start(): Promise<void> {
         rendererFrames++
         const receivedFrames = rendererFrames
         const captureTimeMs = data.timing ? data.timing.audioTime * 1000 + audioToRendererMs + rendererToMainMs : undefined
-        if (data.timing) firstFrameSample ??= Math.round((captureTimeMs! - sessionStartMs) * 16)
+        if (data.timing) {
+          firstFrameSample ??= Math.round((captureTimeMs! - sessionStartMs) * 16)
+          firstAudioTime ??= data.timing.audioTime
+        }
         const observedClockResidualMs = data.timing && context
           ? Math.abs(performance.now() - context.currentTime * 1000 - audioToRendererMs) : 0
         const metadata = data.timing ? {
-          sequence: data.timing.sequence, startSample: firstFrameSample! + data.timing.sequence * 1600,
+          sequence: data.timing.sequence,
+          startSample: firstFrameSample! + Math.round((data.timing.audioTime - firstAudioTime!) * 16000),
           captureTimeMs, captureErrorMs: data.timing.errorMs + clockErrorMs + observedClockResidualMs, sampleCount: 1600 as const,
           captureKind: 'render-estimate' as const
         } : undefined
@@ -141,8 +154,12 @@ async function start(): Promise<void> {
             else if (metadata) await bridge.frame(data.frame, metadata)
             else await bridge.frame(data.frame)
             worklet?.port.postMessage({ type: 'ack' })
-          } catch { stop(`Could not write ${source} audio to disk`) }
+          } catch { stop(`Could not deliver ${source} audio to the recording service`) }
         })
+      } else if (data.type === 'gap') {
+        console.warn('[vinxa-capture] audio graph interruption ' + JSON.stringify({
+          missingInputFrames: data.missingInputFrames, sampleRate: data.sampleRate, recovery: data.recovery
+        }))
       } else if (data.type === 'finished') {
         if (data.levels) {
           console.info('[vinxa-capture] levels ' + JSON.stringify(data.levels))
@@ -153,7 +170,16 @@ async function start(): Promise<void> {
         paddedSamples = data.paddedSamples
         void finish()
       } else if (data.type === 'error') {
-        errorMessage ??= 'Audio processing or bounded IPC buffering failed'
+        const messages: Record<string, string> = {
+          PCM_QUEUE_FULL: 'Audio delivery stalled for over one second (PCM_QUEUE_FULL). Close heavy applications and retry.',
+          AUDIO_CLOCK_RESET: 'The audio graph clock moved backwards or became invalid (AUDIO_CLOCK_RESET). Restart the recording.',
+          INVALID_PCM: 'The audio device supplied invalid samples (INVALID_PCM). Restart the recording and check the microphone.'
+        }
+        errorMessage ??= messages[data.code] ?? 'Audio processing failed (AUDIO_PROCESSING_FAILED)'
+        if (data.code === 'AUDIO_CLOCK_RESET' && data.clock &&
+          [data.clock.expectedFrame, data.clock.observedFrame, data.clock.sampleRate].every(Number.isFinite)) {
+          errorMessage += ` Expected frame ${data.clock.expectedFrame}, received ${data.clock.observedFrame} at ${data.clock.sampleRate} Hz.`
+        }
         stopping = true
         void finish()
       }

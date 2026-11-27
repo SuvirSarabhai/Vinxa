@@ -11,6 +11,7 @@ async function main() {
   const environment = { ...process.env }
   delete environment.ELECTRON_RUN_AS_NODE
   delete environment.VINXA_CAPTURE_TEST
+  environment.VINXA_BACKEND = 'demo'
   const desktop = await _electron.launch({ executablePath, args: appArguments, env: environment, timeout: 30000 })
   try {
     const page = await desktop.firstWindow()
@@ -21,7 +22,7 @@ async function main() {
     let setupCreated = desktop.waitForEvent('window')
     await page.getByRole('button', { name: 'Start demo', exact: true }).click()
     let setup = await setupCreated
-    await setup.getByRole('heading', { name: 'Start a session' }).waitFor()
+    await setup.getByRole('heading', { name: 'Prepare local session' }).waitFor()
     assert.equal(await setup.getByRole('button', { name: 'Confirm and start demo', exact: true }).isDisabled(), true)
     assert.equal((await page.evaluate(() => window.vinxaPhase2.snapshot())).segments.length, 0)
     await setup.getByRole('button', { name: 'Cancel', exact: true }).click()
@@ -80,7 +81,7 @@ async function main() {
     })
     assert.equal(exitCode, 0)
     await page.waitForFunction(() => document.visibilityState === 'visible')
-    assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1)
+    assert.equal(await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.getTitle() !== 'Vinxa Transcript').length), 1)
     assert.deepEqual(errors, [])
     console.log('PASS: consent/cancel, demo transcript, pause/resume/stop, collapse, opacity, clipboard, programmatic close-to-tray, second-instance restore')
     console.log('Native title-bar X is a separate known issue; this script does not validate that mouse click.')

@@ -1,6 +1,9 @@
 import { z } from 'zod'
 import { recordingConfigSchema, recordingStateSchema, transcriptSegmentSchema } from './schemas'
-import type { RecordingConfig, TranscriptSegment } from './contracts'
+import type { RecordingConfig, RecordingState, TranscriptSegment } from './contracts'
+
+export const recordingEngineSchema = z.object({ ready: z.boolean(), message: z.string() }).strict()
+export type RecordingEngine = z.infer<typeof recordingEngineSchema>
 
 export const phase2Channels = {
   command: 'phase2:command', snapshot: 'phase2:snapshot', changed: 'phase2:changed', overlayDrag: 'phase2:overlay-drag'
@@ -30,6 +33,7 @@ export const phase2CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('pause-resume') }).strict(),
   z.object({ type: z.literal('stop') }).strict(),
   z.object({ type: z.literal('show-overlay') }).strict(),
+  z.object({ type: z.literal('open-library') }).strict(),
   z.object({ type: z.literal('collapse') }).strict(),
   z.object({ type: z.literal('opacity'), value: z.number().min(0.5).max(1) }).strict(),
   z.object({ type: z.literal('copy-lines') }).strict(),
@@ -49,6 +53,8 @@ export const sessionSnapshotSchema = z.object({
   config: recordingConfigSchema,
   segments: z.array(transcriptSegmentSchema),
   sessionId: z.string().nullable(),
+  startedAtMs: z.number().nonnegative().nullable().optional(),
+  endedAtMs: z.number().nonnegative().nullable().optional(),
   error: z.string().nullable(),
   notice: z.string(),
   pauses: z.array(pauseGapSchema),
@@ -64,7 +70,8 @@ export const phase2SnapshotSchema = sessionSnapshotSchema.extend({
   activeHotkeys: z.array(z.string()),
   hotkeyErrors: z.array(z.string()),
   collapsed: z.boolean(),
-  opacity: z.number().min(0.5).max(1)
+  opacity: z.number().min(0.5).max(1),
+  engine: recordingEngineSchema
 })
 
 export type Phase2Command = z.infer<typeof phase2CommandSchema>
@@ -84,15 +91,19 @@ export interface BackendEvents {
   transcript(segment: TranscriptSegment): void
   levels(mic: number | null, system: number | null): void
   notice(message: string): void
-  failure(): void
+  failure(message?: string): void
+  discardPartials?(): void
 }
 
 export interface RecordingBackend {
   mode: 'demo' | 'local'
-  start(config: RecordingConfig, sessionId: string, events: BackendEvents): Promise<void>
+  start(config: RecordingConfig, sessionId: string, events: BackendEvents, sessionStartMs?: number): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
   stop(): Promise<void>
+  bindOwner?(owner: { getState(): RecordingState; hasConsent(sessionId: string): boolean }): void
+  onEngine?(listener: (engine: RecordingEngine) => void): () => void
+  dispose?(): void
 }
 
 export const consentStatementVersion = 'phase2-v1'

@@ -24,7 +24,7 @@ interface Options {
   createSocket?: (url: string) => WebSocket
   maxRestarts?: number; backoffMs?: number; startupMs?: number; readyMs?: number
   healthMs?: number; requestMs?: number; bufferFramesPerSource?: number
-  shutdownMs?: number
+  shutdownMs?: number; finalizationMs?: number
   protocolVersion?: 1 | 2
   keepWarm?: boolean
 }
@@ -40,7 +40,15 @@ export class SidecarOperationError extends Error {}
 export function resolveSidecarRuntime(paths: { appPath: string; resourcesPath: string; packaged: boolean },
   configuredPython?: string): SidecarRuntime {
   const bundled = join(paths.resourcesPath, 'sidecar', process.platform === 'win32' ? 'vinxa-sidecar.exe' : 'vinxa-sidecar')
-  if (paths.packaged && existsSync(bundled)) return { command: bundled, args: [] }
+  if (paths.packaged && existsSync(bundled)) {
+    const model = process.env.VINXA_SPEECH_MODEL || 'base.en'
+    const modelPath = join(paths.resourcesPath, 'sidecar', 'models', model)
+    return { command: bundled, args: [], env: {
+      HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1',
+      ...(!process.env.VINXA_SPEECH_MODEL_PATH && ['base.en', 'small', 'tiny.en'].includes(model) && existsSync(join(modelPath, 'model.bin'))
+        ? { VINXA_SPEECH_MODEL_PATH: modelPath } : {})
+    } }
+  }
   let python = configuredPython ?? join(paths.appPath, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python')
   const root = paths.packaged ? join(paths.resourcesPath, 'sidecar') : paths.appPath
   if (!existsSync(python) || !existsSync(join(root, 'sidecar/server.py'))) {
@@ -71,7 +79,10 @@ export class SidecarManager {
   private lifetime = new AbortController()
   private firstReady = deferred<void>()
   private readyWaiters = new Set<ReturnType<typeof deferred<void>>>()
-  private pending = new Map<string, { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
+  private pending = new Map<string, { type: SidecarControl['type']; resolve: () => void; reject: (e: Error) => void; timer?: ReturnType<typeof setTimeout> }>()
+  private lifecycleRequests = 0
+  private healthGraceUntil = 0
+  private stopOperation?: Promise<void>
   private queue: QueuedFrame[] = []
   private expected = new Map<AudioSourceName, number>()
   private finalEnd = new Map<AudioSourceName, number>()
@@ -92,7 +103,8 @@ export class SidecarManager {
       [options.maxRestarts ?? 3, 0, 5], [options.backoffMs ?? 250, 1, 10000],
       [options.bufferFramesPerSource ?? 20, 1, 50], [options.startupMs ?? 15000, 10, 120000],
       [options.readyMs ?? 60000, 10, 180000], [options.healthMs ?? 5000, 10, 30000],
-      [options.requestMs ?? 5000, 10, 30000], [options.shutdownMs ?? 3000, 10, 5000]
+      [options.requestMs ?? 5000, 10, 30000], [options.shutdownMs ?? 3000, 10, 5000],
+      [options.finalizationMs ?? 30000, 10, 60000]
     ]) if (!Number.isInteger(value) || value < minimum || value > maximum) throw new SidecarOperationError('Invalid sidecar limits')
   }
 
@@ -107,7 +119,7 @@ export class SidecarManager {
     if (!this.options.keepWarm) return this.stop()
     if (this.standby) return
     await this.drain()
-    await this.request('session-end', {}, 30000)
+    await this.request('session-end', {}, this.options.finalizationMs ?? 30000)
     this.standby = true
     this.expected.clear()
     this.finalEnd.clear()
@@ -130,11 +142,14 @@ export class SidecarManager {
       sidecarControlSchema.parse({ type: 'session-begin', sessionId: this.session!.sessionId, generation: this.generation,
         requestId: randomUUID(), nextSessionId: session.sessionId, language: session.language, enabledSources: session.enabledSources })
       this.switching = true
+      let readyTimer: ReturnType<typeof setTimeout> | undefined
       try {
         this.firstReady = deferred<void>()
         void this.firstReady.promise.catch(() => {})
+        readyTimer = setTimeout(() => this.firstReady.reject(new SidecarOperationError('Session readiness timed out')),
+          this.options.readyMs ?? 60000)
         const pending = this.request('session-begin', { nextSessionId: session.sessionId,
-          language: session.language, enabledSources: session.enabledSources }, 30000)
+          language: session.language, enabledSources: session.enabledSources }, this.options.finalizationMs ?? 30000)
         this.session = { ...session, enabledSources: [...session.enabledSources] }
         this.available = false
         this.expected.clear(); this.finalEnd.clear(); this.paused = false
@@ -145,7 +160,7 @@ export class SidecarManager {
       } catch (error) {
         this.finishGeneration?.('Session transition failed')
         throw error
-      } finally { this.switching = false }
+      } finally { clearTimeout(readyTimer); this.switching = false }
     }
     if (this.active) throw new SidecarOperationError('A sidecar session is already active')
     const { meetingId: _, ...wire } = session
@@ -293,7 +308,9 @@ export class SidecarManager {
                 } else markReady()
               } else this.options.onStatus(event)
               if (!health && event.status !== 'stopped') health = setInterval(() => {
-                if (!this.stopping) void this.request('ping').catch(() => fail('Sidecar health check timed out'))
+                if (!this.stopping && !this.lifecycleRequests && ![...this.pending.values()].some((request) => request.type === 'ping')) {
+                  void this.request('ping').catch(() => fail('Sidecar health check timed out'))
+                }
               }, this.options.healthMs ?? 5000)
             } else if (event.type === 'error') {
               this.options.onError(event)
@@ -355,11 +372,28 @@ export class SidecarManager {
     if (!this.socket || this.socket.readyState !== 1 || this.pending.size >= 64) return Promise.reject(new SidecarOperationError('Sidecar control unavailable'))
     const requestId = randomUUID()
     const control = sidecarControlSchema.parse({ type, sessionId: this.session!.sessionId, generation: this.generation, requestId, ...fields })
-    return new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(requestId); reject(new SidecarOperationError('Sidecar control timed out')) }, timeout)
-      this.pending.set(requestId, { resolve, reject, timer })
+    const lifecycle = !['ping', 'clock-sync', 'clock-set'].includes(type)
+    if (lifecycle) this.lifecycleRequests++
+    const operation = new Promise<void>((resolve, reject) => {
+      const pending = { type, resolve, reject, timer: undefined as ReturnType<typeof setTimeout> | undefined }
+      const expired = (): void => {
+        if (type === 'ping' && (this.lifecycleRequests || performance.now() < this.healthGraceUntil)) {
+          pending.timer = setTimeout(expired, this.lifecycleRequests ? timeout : Math.max(1, this.healthGraceUntil - performance.now()))
+          return
+        }
+        this.pending.delete(requestId)
+        reject(new SidecarOperationError('Sidecar control timed out'))
+      }
+      pending.timer = setTimeout(expired, timeout)
+      this.pending.set(requestId, pending)
       try { this.socket!.send(JSON.stringify(control)) }
-      catch { clearTimeout(timer); this.pending.delete(requestId); reject(new SidecarOperationError('Sidecar control failed')) }
+      catch { clearTimeout(pending.timer); this.pending.delete(requestId); reject(new SidecarOperationError('Sidecar control failed')) }
+    })
+    return operation.finally(() => {
+      if (lifecycle) {
+        this.lifecycleRequests--
+        this.healthGraceUntil = performance.now() + (this.options.requestMs ?? 5000)
+      }
     })
   }
 
@@ -453,12 +487,13 @@ export class SidecarManager {
     }
     if (!this.ready || this.paused) throw new SidecarOperationError('Sidecar unavailable for source finalization')
     await this.drain()
-    await this.request('source-end', { source, paddedSamples })
+    await this.request('source-end', { source, paddedSamples }, this.options.finalizationMs ?? 30000)
   }
   async pause(): Promise<void> {
     if (!this.ready) throw new SidecarOperationError('Sidecar unavailable for pause')
+    await this.drain()
     this.paused = true; this.dropQueue()
-    await this.request('pause')
+    await this.request('pause', {}, this.options.finalizationMs ?? 30000)
     this.expected.clear()
   }
   async resume(): Promise<void> {
@@ -466,13 +501,21 @@ export class SidecarManager {
     await this.request('resume')
     this.expected.clear(); this.paused = false
   }
-  async stop(): Promise<void> {
-    if (!this.active) return
+  stop(): Promise<void> {
+    if (this.stopOperation) return this.stopOperation
+    if (!this.active) return Promise.resolve()
+    const operation = this.stopOwnedProcess()
+    this.stopOperation = operation
+    void operation.finally(() => { if (this.stopOperation === operation) this.stopOperation = undefined }).catch(() => undefined)
+    return operation
+  }
+
+  private async stopOwnedProcess(): Promise<void> {
     this.stopping = true
     try {
       if (this.available && this.socket?.readyState === 1) {
         try { await this.drain() } catch { this.dropQueue() }
-        await this.request('stop', {}, 30000)
+        await this.request('stop', {}, this.options.finalizationMs ?? 30000)
       } else this.dropQueue()
     } catch { this.error('STOP_TIMEOUT', 'Sidecar could not finish normally; unfinalized speech may be missing', false) }
     finally {

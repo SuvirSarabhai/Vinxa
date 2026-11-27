@@ -1,0 +1,2 @@
+-r requirements-phase2.txt
+pyinstaller>=6.11,<7

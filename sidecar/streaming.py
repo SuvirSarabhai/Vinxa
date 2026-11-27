@@ -119,7 +119,8 @@ class StreamingPipeline:
         self.config, self.emit = config, emit
         self.prewarmed = prewarmed
         self.settings = settings or StreamingSettings.environment()
-        self.engine = engine or SpeechEngine(config["model"], cpu_threads=self.settings.cpu_threads, local_files_only=True)
+        self.engine = engine or SpeechEngine(config["model"], cpu_threads=self.settings.cpu_threads, local_files_only=True,
+                                            model_path=os.environ.get("VINXA_SPEECH_MODEL_PATH") or None)
         self.scorer_factory = scorer_factory
         self.diagnostics = Diagnostics()
         self.last_dequeued = {}
@@ -399,8 +400,14 @@ class StreamingPipeline:
                                  state.buffer.start, "Uncommitted audio exceeded the bounded buffer")
             if not self.paused and not self.closed:
                 await self._vad_events(state, events)
-            if not self.paused and state.current and state.buffer.end - state.current.last_pass_sample >= self.settings.interval * 16000:
-                await self._schedule(state, False, state.buffer.end)
+            if not self.paused and state.current:
+                # Offer an early provisional hypothesis without increasing the
+                # sustained inference rate on CPU. Later passes keep the normal
+                # cadence and the queue still coalesces stale live snapshots.
+                first_pass = state.current.last_pass_sample == state.current.start
+                interval = min(self.settings.interval, 0.6) if first_pass else self.settings.interval
+                if state.buffer.end - state.current.last_pass_sample >= interval * 16000:
+                    await self._schedule(state, False, state.buffer.end)
             self.diagnostics.record("ingest_processing", state.source, duration_ms=(monotonic() - started) * 1000)
         except asyncio.CancelledError:
             self._drop_input(state, state.processing_samples, "shutdown")
@@ -613,6 +620,9 @@ class StreamingPipeline:
 
     async def pause(self):
         await self._require()
+        if all(state.ended for state in self.sources.values()):
+            await asyncio.wait_for(self.idle.wait(), 30)
+            await self._flush_events()
         self.paused = True
         for state in self.sources.values():
             state.epoch += 1

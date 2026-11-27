@@ -15,7 +15,9 @@ function setup(source = 'mic') {
   let node: any
   const closeContext = vi.fn().mockResolvedValue(undefined)
   const disconnect = vi.fn()
+  const contextOptions = vi.fn()
   class Context {
+    constructor(options?: AudioContextOptions) { contextOptions(options) }
     audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) }
     destination = {}
     createMediaStreamSource = () => ({ connect: vi.fn(), disconnect })
@@ -44,10 +46,31 @@ function setup(source = 'mic') {
   vi.stubGlobal('AudioContext', Context)
   vi.stubGlobal('AudioWorkletNode', Worklet)
   vi.stubGlobal('location', { search: `?source=${source}` })
-  return { stream, stopTrack, stopVideo, getUserMedia, getDisplayMedia, finished, closeContext, disconnect, stop: () => stop(), node: () => node }
+  return { stream, stopTrack, stopVideo, getUserMedia, getDisplayMedia, finished, closeContext, contextOptions, disconnect, stop: () => stop(), node: () => node }
 }
 
 describe('hidden microphone capture lifecycle', () => {
+  it('requests native 16 kHz and falls back only if that rate is unsupported', async () => {
+    const test = setup()
+    test.contextOptions.mockImplementationOnce(() => { throw new DOMException('unsupported', 'NotSupportedError') })
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    expect(test.contextOptions.mock.calls).toEqual([
+      [{ sampleRate: 16000, latencyHint: 'interactive' }], [{ latencyHint: 'interactive' }]
+    ])
+    test.stop()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalled())
+  })
+
+  it.each(['PCM_QUEUE_FULL', 'AUDIO_CLOCK_RESET', 'INVALID_PCM'])('preserves the specific worklet failure %s', async (code) => {
+    const test = setup()
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    expect(test.contextOptions).toHaveBeenCalledWith({ sampleRate: 16000, latencyHint: 'interactive' })
+    test.node().port.onmessage({ data: { type: 'error', code } })
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({ error: expect.stringContaining(code), paddedSamples: 0 }))
+    expect(test.stopTrack).toHaveBeenCalled()
+  })
   it('translates worklet sample timing into the main clock and preserves it through IPC calls', async () => {
     const test = setup()
     window.vinxaCapture.clockSync = vi.fn(async (sent) => ({ mainReceiveMs: sent + 1000,
@@ -79,6 +102,31 @@ describe('hidden microphone capture lifecycle', () => {
     await vi.waitFor(() => expect(test.finished).toHaveBeenCalled())
   })
 
+  it('keeps recording after a graph gap and preserves acquisition time across the IPC boundary', async () => {
+    const test = setup()
+    window.vinxaCapture.clockSync = vi.fn(async (sent) => ({ mainReceiveMs: sent + 1000,
+      mainSendMs: sent + 1000, sessionStartMs: 0 }))
+    Object.defineProperty(AudioContext.prototype, 'currentTime', { configurable: true, value: 0 })
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    const sendFrame = (sequence: number, audioTime: number) => test.node().port.onmessage({ data: {
+      type: 'frame', frame: new ArrayBuffer(3201), timing: { sequence, audioTime, sampleCount: 1600, errorMs: 5 }
+    } })
+    sendFrame(0, 2)
+    test.node().port.onmessage({ data: { type: 'gap', missingInputFrames: 14400, sampleRate: 16000, recovery: 'reanchor' } })
+    sendFrame(1, 3)
+    sendFrame(2, 3.1)
+    await vi.waitFor(() => expect(window.vinxaCapture.frame).toHaveBeenCalledTimes(3))
+    const calls = vi.mocked(window.vinxaCapture.frame).mock.calls
+    expect(calls.map((call) => call[1]!.sequence)).toEqual([0, 1, 2])
+    expect(calls[1][1]!.startSample - calls[0][1]!.startSample).toBe(16000)
+    expect(calls[2][1]!.startSample - calls[1][1]!.startSample).toBe(1600)
+    expect(test.stopTrack).not.toHaveBeenCalled()
+    expect(test.finished).not.toHaveBeenCalled()
+    test.stop()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalledWith({ error: null, paddedSamples: 200 }))
+  })
+
   it('rejects invalid microphone gain before acquiring an input track', async () => {
     const test = setup('mic&micGain=invalid')
     await import('./capture')
@@ -87,6 +135,15 @@ describe('hidden microphone capture lifecycle', () => {
     }))
     expect(test.getUserMedia).not.toHaveBeenCalled()
     expect(test.node()).toBeUndefined()
+  })
+
+  it('uses the microphone selected by the consent-owning recording flow', async () => {
+    const test = setup('mic&microphoneDeviceId=selected-input')
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    expect(test.getUserMedia).toHaveBeenCalledWith({ audio: { deviceId: { exact: 'selected-input' } }, video: false })
+    test.stop()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalled())
   })
 
   it('warns about saturated input without changing the public completion payload', async () => {
