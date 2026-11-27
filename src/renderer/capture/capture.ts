@@ -1,6 +1,7 @@
 import type { CaptureBridge } from '../../shared/contracts'
 import { MicrophoneGainError, parseMicrophoneGain } from '../../shared/pcm'
 import { sourceIds } from '../../shared/contracts'
+import { clockEstimate } from '../../shared/frame-protocol'
 import { audioSourceSchema } from '../../shared/schemas'
 import workletUrl from './worklet.ts?worker&url'
 
@@ -16,6 +17,13 @@ let started = false
 let writes = Promise.resolve()
 let errorMessage: string | null = null
 let paddedSamples = 0
+let rendererFrames = 0
+let ipcFrames = 0
+let audioToRendererMs = 0
+let rendererToMainMs = 0
+let clockErrorMs = 0
+let sessionStartMs = 0
+let firstFrameSample: number | undefined
 let flushTimer: ReturnType<typeof setTimeout> | undefined
 
 const bridge = window.vinxaCapture
@@ -90,15 +98,48 @@ async function start(): Promise<void> {
     console.info('[vinxa-capture] loading worklet')
     await context.audioWorklet.addModule(workletUrl)
     if (stopping) { started = true; await finish(); return }
-    worklet = new AudioWorkletNode(context, 'vinxa-capture', { processorOptions: { source: sourceIds[source], micGain } })
+    if (bridge.clockSync) {
+      const estimates: ReturnType<typeof clockEstimate>[] = []
+      for (let index = 0; index < 3; index++) {
+        const sent = performance.now()
+        const reply = await bridge.clockSync(sent)
+        const estimate = clockEstimate(sent, reply.mainReceiveMs, reply.mainSendMs, performance.now())
+        estimates.push(estimate)
+        sessionStartMs = reply.sessionStartMs
+      }
+      const best = estimates.sort((a, b) => a.uncertaintyMs - b.uncertaintyMs)[0]
+      rendererToMainMs = best.offsetMs
+      clockErrorMs = best.uncertaintyMs
+      audioToRendererMs = performance.now() - context.currentTime * 1000
+    }
+    worklet = new AudioWorkletNode(context, 'vinxa-capture', { processorOptions: { source: sourceIds[source], micGain,
+      ...(parameters.get('diagnostics') === '1' ? { diagnostics: true } : {}),
+      ...(bridge.clockSync ? { timed: true } : {}) } })
     worklet.onprocessorerror = () => stop(`${source} audio processing failed`)
     worklet.port.onmessage = ({ data }) => {
       if (finished) return
+      if (data.diagnostics && data.type !== 'frame') console.info('[vinxa-capture] diagnostics ' +
+        JSON.stringify({ ...data.diagnostics, rendererFrames, ipcFrames }))
       if (data.type === 'frame') {
+        rendererFrames++
+        const receivedFrames = rendererFrames
+        const captureTimeMs = data.timing ? data.timing.audioTime * 1000 + audioToRendererMs + rendererToMainMs : undefined
+        if (data.timing) firstFrameSample ??= Math.round((captureTimeMs! - sessionStartMs) * 16)
+        const observedClockResidualMs = data.timing && context
+          ? Math.abs(performance.now() - context.currentTime * 1000 - audioToRendererMs) : 0
+        const metadata = data.timing ? {
+          sequence: data.timing.sequence, startSample: firstFrameSample! + data.timing.sequence * 1600,
+          captureTimeMs, captureErrorMs: data.timing.errorMs + clockErrorMs + observedClockResidualMs, sampleCount: 1600 as const,
+          captureKind: 'render-estimate' as const
+        } : undefined
         writes = writes.then(async () => {
           if (errorMessage) return
           try {
-            await bridge.frame(data.frame)
+            ipcFrames++
+            if (data.diagnostics) await bridge.frame(data.frame, metadata,
+              { ...data.diagnostics, rendererFrames: receivedFrames, ipcFrames })
+            else if (metadata) await bridge.frame(data.frame, metadata)
+            else await bridge.frame(data.frame)
             worklet?.port.postMessage({ type: 'ack' })
           } catch { stop(`Could not write ${source} audio to disk`) }
         })
@@ -123,6 +164,7 @@ async function start(): Promise<void> {
     worklet.connect(context.destination)
     console.info('[vinxa-capture] resuming audio context')
     await context.resume()
+    if (bridge.clockSync) audioToRendererMs = performance.now() - context.currentTime * 1000
     console.info('[vinxa-capture] audio context running')
     started = true
     if (stopping) { await finish(); return }

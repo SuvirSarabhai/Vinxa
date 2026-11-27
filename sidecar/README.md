@@ -3,8 +3,24 @@
 Phase 1 implements local WAV recognition through engine.py and repeatable
 benchmarks in benchmark.py and benchmark_cpp.py. See
 [Developer B setup](../README-developer-b.md) and
-[measured results](../docs/phase1-speech-benchmark.md). There is no server or
-live Electron speech integration yet.
+[measured results](../docs/phase1-speech-benchmark.md). There is no
+live Electron speech integration yet. Phase 2 Stage 2 now adds the authenticated
+transport described below.
+
+## Phase 2 transport checkpoint
+
+Install `requirements-phase2.txt` in the existing project virtual environment.
+The new `python -m sidecar.server` entry point binds only 127.0.0.1 on a random
+port. Its parent supplies a fresh token, session UUID and generation through
+environment, not command-line arguments. The first stdout JSON line reports
+socket listening, not a warmed model. First-message config is authenticated and
+validated against JSON Schema generated from src/shared/schemas.ts.
+
+At this stage, ping/stop, validation and cleanup work. Valid audio is explicitly
+rejected with NOT_READY until VAD, streaming and model warm-up are implemented;
+no transcript is generated. Preload status/error subscriptions are available,
+but Developer A's recording flow is not connected to a sidecar manager yet.
+See [architecture and protocol](../docs/phase2-sidecar-architecture.md).
 
 ## Selected-output Phase 1 diagnostic
 

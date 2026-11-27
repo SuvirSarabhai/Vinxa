@@ -1,0 +1,123 @@
+{
+  "status": "DONE",
+  "latency_kind": "client-receipt (server emission time unavailable; contract unchanged)",
+  "alignment_kind": "offline model-aligned estimates, not human ground truth",
+  "elapsed_seconds": 44.765999999995984,
+  "replay_maximum_lag_ms": 19.00000000023283,
+  "child_exit_code": 0,
+  "child_stderr_bytes": 0,
+  "leading_silence_seconds": 2,
+  "trailing_silence_seconds": 2,
+  "inputs": {
+    "mic": {
+      "sha256": "cc7191eb125af62acfa7a81692e3b7fe330b1a0d131bcc07988f133198495827",
+      "samples": 479701,
+      "duration_seconds": 29.9813125
+    },
+    "system": {
+      "sha256": "8010b23f389abc87715374dc077b2afe3875c70cc028e3e22768711787695adc",
+      "samples": 479701,
+      "duration_seconds": 29.9813125
+    }
+  },
+  "sources": {
+    "mic": {
+      "partial": 1,
+      "final": 2,
+      "empty_final": 0,
+      "silence_false_positives": 0,
+      "unmatched_emitted_words": 8,
+      "negative_estimates": 0,
+      "reference_words": 4,
+      "partial_word_coverage": 0.25,
+      "final_word_coverage": 0.25,
+      "time_to_first_partial_ms": 30344.0000000046,
+      "partial_client_receipt_latency": {
+        "count": 1,
+        "median_ms": 3344.0000000045984,
+        "p95_ms": 3344.0000000045984,
+        "maximum_ms": 3344.0000000045984
+      },
+      "final_client_receipt_latency": {
+        "count": 1,
+        "median_ms": 10375.0,
+        "p95_ms": 10375.0,
+        "maximum_ms": 10375.0
+      },
+      "inference_pass": {
+        "count": 5,
+        "median_ms": 2421.756900002947,
+        "p95_ms": 2908.265860003303,
+        "maximum_ms": 2919.529600003443
+      },
+      "queue_wait": {
+        "count": 5,
+        "median_ms": 4750.0,
+        "p95_ms": 6840.399999996589,
+        "maximum_ms": 7280.999999995402
+      }
+    },
+    "system": {
+      "partial": 1,
+      "final": 3,
+      "empty_final": 1,
+      "silence_false_positives": 0,
+      "unmatched_emitted_words": 15,
+      "negative_estimates": 0,
+      "reference_words": 45,
+      "partial_word_coverage": 0.15555555555555556,
+      "final_word_coverage": 0.35555555555555557,
+      "time_to_first_partial_ms": 19984.000000004016,
+      "partial_client_receipt_latency": {
+        "count": 7,
+        "median_ms": 6968.000000000757,
+        "p95_ms": 8305.900000001566,
+        "maximum_ms": 8578.000000001339
+      },
+      "final_client_receipt_latency": {
+        "count": 16,
+        "median_ms": 13194.999999999709,
+        "p95_ms": 14800.750000000335,
+        "maximum_ms": 14953.000000001339
+      },
+      "inference_pass": {
+        "count": 8,
+        "median_ms": 3488.2485999987694,
+        "p95_ms": 4632.700149998345,
+        "maximum_ms": 4893.65700000053
+      },
+      "queue_wait": {
+        "count": 8,
+        "median_ms": 2859.499999998661,
+        "p95_ms": 8965.94999999761,
+        "maximum_ms": 9561.99999999808
+      }
+    }
+  },
+  "maximum_observed_queue_depth": 4,
+  "reported_dropped_samples": 114112,
+  "errors": {
+    "AUDIO_DROPPED": 9
+  },
+  "environment": {
+    "python": "3.11.9",
+    "processor": "Intel64 Family 6 Model 186 Stepping 2, GenuineIntel",
+    "logical_cpus": 16,
+    "physical_cpus": 10,
+    "ram_gib": 15.637977600097656,
+    "versions": {
+      "faster-whisper": "1.2.1",
+      "ctranslate2": "4.9.1",
+      "onnxruntime": "1.32.0",
+      "websockets": "16.1.1"
+    }
+  },
+  "configuration": {
+    "model": "base.en",
+    "language": "en",
+    "cpu_threads": 4,
+    "beam_size": 1,
+    "interval_seconds": 1.0,
+    "window_seconds": 6.0
+  }
+}
