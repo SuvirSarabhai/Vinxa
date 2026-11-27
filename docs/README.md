@@ -1,5 +1,9 @@
 # Project Documentation
 
+[Stitch frontend assessment, integration and verification](stitch-frontend-integration.md)
+describes the new React UI, imported design reference, automated desktop checks,
+real speech test with synthetic input, and remaining hardware checks.
+
 Keep project evidence here, without committing recordings, downloaded models, API keys, or personally identifiable transcript data.
 
 Planned documents:
@@ -11,4 +15,10 @@ Planned documents:
 - `demo-script.md` - three-minute product story plus offline and failure fallbacks.
 
 Every factual performance claim in the README or demo should link to a dated harness result in this directory.
+
+For the current connection between Developer A's UI and Developer B's speech
+service, see [local Phase 2 integration and user-run checks](phase2-local-integration.md).
+
+[Phase 2 completion checklist](phase2-completion-checklist.md) separates finished
+code from the remaining user-run build, packaged-runtime, and real-call checks.
 

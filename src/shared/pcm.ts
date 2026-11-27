@@ -71,6 +71,13 @@ export class PcmEncoder {
         mono += sample / channels.length
       }
       if (!Number.isFinite(mono)) throw new Error('PCM samples must be finite')
+      // The audio graph can already supply 16 kHz. Avoid running a sinc filter
+      // (and thousands of trigonometric operations per quantum) in that case.
+      if (this.inputRate === pcmFormat.sampleRate) {
+        this.inputSamples++
+        this.writeSample(mono)
+        continue
+      }
       this.history[this.inputSamples % this.history.length] = mono
       this.inputSamples++
       while (this.outputSamples * this.inputRate / pcmFormat.sampleRate + this.radius < this.inputSamples) {

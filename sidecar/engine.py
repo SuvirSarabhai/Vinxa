@@ -176,6 +176,11 @@ class SpeechEngine:
                         continue
                     for word in segment.words or []:
                         start, end = round(word.start * 16000), round(word.end * 16000)
+                        # Word timestamps are quantized and can slightly exceed
+                        # a live window's right edge. Retain the observed portion
+                        # rather than losing the first hypothesis entirely.
+                        if 0 <= start < len(audio) < end <= len(audio) + 1280:
+                            end = len(audio)
                         if 0 <= start < end <= len(audio) and word.word.strip():
                             words.append(Word(word.word, offset + start, offset + end))
                         else:

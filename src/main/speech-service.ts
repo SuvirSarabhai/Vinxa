@@ -2,16 +2,17 @@ import { randomUUID } from 'node:crypto'
 import { app, ipcMain } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { ipcChannels } from '../shared/ipc-channels'
-import type { SidecarStatus } from '../shared/contracts'
+import type { SidecarStatus, SidecarError, TranscriptSegment } from '../shared/contracts'
 import type { RecordingOwner } from './recording-speech-bridge'
 import { RecordingSpeechBridge, setWarmBridgeFactory } from './recording-speech-bridge'
-import { SidecarManager, resolveSidecarRuntime } from './sidecar-manager'
+import { SidecarManager, SidecarOperationError, resolveSidecarRuntime } from './sidecar-manager'
 import type { SidecarRuntime } from './sidecar-manager'
 
 let cachedStatus: SidecarStatus | undefined
 let statusHandlerRegistered = false
 
 type SpeechWindow = Pick<BrowserWindow, 'isDestroyed' | 'webContents'>
+export type SpeechServiceEvent = SidecarStatus | SidecarError | { type: 'transcript'; segment: TranscriptSegment }
 
 export class SpeechService {
   readonly manager: SidecarManager
@@ -19,6 +20,8 @@ export class SpeechService {
   private target: SpeechWindow
   private initialization?: Promise<void>
   private shuttingDown = false
+  private listeners = new Set<(event: SpeechServiceEvent) => void>()
+  private latestStatus?: SidecarStatus
 
   constructor(runtime: SidecarRuntime, window: SpeechWindow,
     private readonly model = 'base.en', private readonly language = 'en') {
@@ -28,15 +31,32 @@ export class SpeechService {
     }
     this.manager = new SidecarManager({ runtime, keepWarm: true, protocolVersion: 2,
       onTranscript: (segment) => {
-        if (this.bridge?.permitsTranscript(segment)) send(ipcChannels.transcriptSegment, segment)
+        if (this.bridge?.permitsTranscript(segment)) {
+          send(ipcChannels.transcriptSegment, segment)
+          this.emit({ type: 'transcript', segment })
+        }
       },
-      onStatus: (status) => { cachedStatus = status; send(ipcChannels.engineStatus, status) },
-      onError: (error) => send(ipcChannels.errorRaised, error)
+      onStatus: (status) => {
+        cachedStatus = this.latestStatus = status
+        send(ipcChannels.engineStatus, status)
+        this.emit(status)
+      },
+      onError: (error) => { send(ipcChannels.errorRaised, error); this.emit(error) }
     })
   }
 
   get selectedModel(): string { return this.model }
   get selectedLanguage(): string { return this.language }
+
+  subscribe(listener: (event: SpeechServiceEvent) => void): () => void {
+    this.listeners.add(listener)
+    if (this.latestStatus) listener(this.latestStatus)
+    return () => this.listeners.delete(listener)
+  }
+
+  private emit(event: SpeechServiceEvent): void {
+    for (const listener of this.listeners) listener(event)
+  }
 
   initialize(): Promise<void> {
     if (this.shuttingDown) return Promise.reject(new Error('Speech service is closing'))
@@ -57,13 +77,27 @@ export class SpeechService {
       sendFrame: (source, pcm, metadata) => this.manager.sendFrame(source, pcm, metadata),
       sourceEnd: (source, padding) => this.manager.sourceEnd(source, padding),
       pause: () => this.manager.pause(), resume: () => this.manager.resume(),
-      stop: () => this.manager.endSession()
+      stop: () => this.endRecording()
     }, owner)
     return bridge
   }
 
-  async shutdown(): Promise<void> {
+  private async endRecording(): Promise<void> {
+    try { await this.manager.endSession() }
+    catch {
+      await this.manager.stop()
+      this.initialization = undefined
+      if (!this.shuttingDown) void this.initialize().catch(() => undefined)
+      throw new SidecarOperationError('The session could not finish completely. Unfinalized words may be missing. Wait for local speech to become ready before starting another session.')
+    }
+  }
+
+  beginShutdown(): void {
     this.shuttingDown = true
+  }
+
+  async shutdown(): Promise<void> {
+    this.beginShutdown()
     await this.manager.stop()
   }
 }

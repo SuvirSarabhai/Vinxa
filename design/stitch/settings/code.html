@@ -1,0 +1,298 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Settings</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-[1024px] flex flex-col" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+  <!-- Windows Titlebar -->
+  <div class="h-9 bg-surface-nav border-b border-border-neutral px-md flex items-center justify-between select-none">
+    <div class="flex items-center gap-sm">
+      <span class="w-5 h-5 rounded-xs bg-primary text-on-primary flex items-center justify-center font-headline text-label-sm font-bold">V</span>
+      <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal">Vinxa — Settings</span>
+    </div>
+    <div class="flex items-center gap-xs text-text-secondary">
+      <button type="button" aria-label="Minimize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">remove</span>
+      </button>
+      <button type="button" aria-label="Maximize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">crop_square</span>
+      </button>
+      <button type="button" aria-label="Close window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-error hover:text-on-error">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- App Header -->
+  <header class="bg-surface border-b border-border-neutral px-lg py-md flex items-center justify-between gap-md">
+    <div class="flex items-center gap-md">
+      <button type="button" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav font-label text-label-md">
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
+        <span>Back to Dashboard</span>
+      </button>
+      <h1 data-design-text-token="headline-md" class="font-headline text-headline-md text-heading-teal">Settings</h1>
+      <span class="px-sm py-xs rounded-full bg-surface-mint text-heading-teal border border-primary/30 font-label text-label-sm">Demo</span>
+    </div>
+    <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">No live audio is captured in Phase 2</span>
+  </header>
+
+  <main class="flex-1 max-w-4xl w-full mx-auto p-lg flex flex-col gap-lg">
+
+    <!-- Current Phase 2: Global Keyboard Shortcuts -->
+    <section class="bg-surface border border-border-neutral rounded-lg p-lg shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col gap-md">
+      <div class="flex flex-wrap items-center justify-between gap-sm border-b border-border-neutral pb-md">
+        <div>
+          <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Global keyboard shortcuts</h2>
+          <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Customize Windows global hotkeys for starting, pausing, and stopping sessions.</p>
+        </div>
+        <div class="flex items-center gap-xs">
+          <button type="button" onclick="simulateConflict()" class="px-sm py-xs rounded-xs bg-surface-subtle border border-border-neutral text-heading-teal hover:bg-surface-mint font-label text-label-sm">Simulate conflict</button>
+          <button type="button" onclick="resetShortcuts()" class="px-sm py-xs rounded-xs bg-surface-subtle border border-border-neutral text-heading-teal hover:bg-surface-mint font-label text-label-sm">Reset defaults</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-md">
+        <!-- Start Shortcut -->
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Start session</span>
+          <input id="sc-start" type="text" value="Ctrl+Alt+S" oninput="validateShortcuts()" class="w-full px-md py-sm rounded-sm bg-surface border border-border-neutral font-mono text-mono-sm text-heading-teal focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+          <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Opens Setup &amp; Consent</span>
+        </label>
+
+        <!-- Pause / Resume Shortcut (starts with conflict example toggleable) -->
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Pause / Resume</span>
+          <input id="sc-pause" type="text" value="Ctrl+Alt+P" oninput="validateShortcuts()" class="w-full px-md py-sm rounded-sm bg-surface border border-border-neutral font-mono text-mono-sm text-heading-teal focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+          <span id="sc-pause-msg" data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Toggles active capture</span>
+        </label>
+
+        <!-- Stop Shortcut -->
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Stop session</span>
+          <input id="sc-stop" type="text" value="Ctrl+Alt+X" oninput="validateShortcuts()" class="w-full px-md py-sm rounded-sm bg-surface border border-border-neutral font-mono text-mono-sm text-heading-teal focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+          <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Ends current session</span>
+        </label>
+      </div>
+
+      <!-- Validation / Conflict Alert -->
+      <div id="conflict-alert" class="hidden bg-error-container border border-error/30 rounded-md p-md flex items-start gap-sm" role="alert">
+        <span class="material-symbols-outlined text-[18px] text-error mt-0.5" aria-hidden="true">error</span>
+        <div>
+          <p data-design-text-token="label-md" class="font-label text-label-md text-on-error-container">Shortcut conflict detected</p>
+          <p id="conflict-detail" data-design-text-token="body-sm" class="font-body text-body-sm text-on-error-container">Each action requires a unique global shortcut. Resolve duplicate combinations before saving.</p>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between pt-sm border-t border-border-neutral">
+        <span id="save-status" data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">All shortcuts valid</span>
+        <button id="save-shortcuts-btn" type="button" onclick="saveShortcuts()" class="px-lg py-sm rounded-sm bg-primary text-on-primary hover:bg-primary-hover font-label text-label-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 transition-colors disabled:opacity-45 disabled:cursor-not-allowed">
+          Save Shortcuts
+        </button>
+      </div>
+    </section>
+
+    <!-- Separately Labelled Future-Phase Concept: Model, Language & Privacy -->
+    <section class="bg-surface-nav border border-dashed border-border-neutral rounded-lg p-lg flex flex-col gap-md">
+      <div class="flex items-center justify-between gap-md">
+        <div>
+          <div class="flex items-center gap-sm">
+            <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Local Speech Model, Language &amp; Privacy</h2>
+            <span class="px-sm py-0.5 rounded-full bg-surface border border-border-neutral text-heading-teal font-label text-label-sm">Future phase</span>
+          </div>
+          <p data-design-text-token="body-sm" class="font-body text-body-sm text-heading-teal mt-xs">
+            Planned controls for faster-whisper model size, transcription language, and local retention policies. Not active in Phase 2 Demo.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-md pointer-events-none select-none">
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Whisper model</span>
+          <select disabled class="w-full px-md py-sm rounded-sm bg-surface-subtle border border-border-neutral text-body-md text-text-secondary">
+            <option>small.en (Local CPU / CUDA)</option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Language</span>
+          <select disabled class="w-full px-md py-sm rounded-sm bg-surface-subtle border border-border-neutral text-body-md text-text-secondary">
+            <option>English (en)</option>
+          </select>
+        </label>
+
+        <label class="flex flex-col gap-xs">
+          <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Audio retention</span>
+          <select disabled class="w-full px-md py-sm rounded-sm bg-surface-subtle border border-border-neutral text-body-md text-text-secondary">
+            <option>Discard raw audio immediately</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    function validateShortcuts() {
+      const s = document.getElementById('sc-start').value.trim();
+      const p = document.getElementById('sc-pause').value.trim();
+      const x = document.getElementById('sc-stop').value.trim();
+      const alertBox = document.getElementById('conflict-alert');
+      const saveBtn = document.getElementById('save-shortcuts-btn');
+      const status = document.getElementById('save-status');
+      const pauseInput = document.getElementById('sc-pause');
+      const pauseMsg = document.getElementById('sc-pause-msg');
+
+      const empty = !s || !p || !x;
+      const conflict = (s && p && s.toLowerCase() === p.toLowerCase()) ||
+                       (s && x && s.toLowerCase() === x.toLowerCase()) ||
+                       (p && x && p.toLowerCase() === x.toLowerCase());
+
+      if (empty) {
+        alertBox.classList.remove('hidden');
+        document.getElementById('conflict-detail').textContent = 'Shortcut fields cannot be empty. Enter a valid modifier + key combination.';
+        saveBtn.disabled = true;
+        status.textContent = 'Validation error';
+        status.className = 'font-label text-label-sm text-error';
+      } else if (conflict) {
+        alertBox.classList.remove('hidden');
+        document.getElementById('conflict-detail').textContent = 'Pause / Resume conflicts with another assigned shortcut. Choose a unique combination.';
+        pauseInput.classList.add('border-error', 'bg-error-container/30');
+        pauseMsg.textContent = 'Conflicts with another shortcut';
+        pauseMsg.className = 'font-body text-body-sm text-error';
+        saveBtn.disabled = true;
+        status.textContent = 'Resolve conflict to save';
+        status.className = 'font-label text-label-sm text-error';
+      } else {
+        alertBox.classList.add('hidden');
+        pauseInput.classList.remove('border-error', 'bg-error-container/30');
+        pauseMsg.textContent = 'Toggles active capture';
+        pauseMsg.className = 'font-body text-body-sm text-text-secondary';
+        saveBtn.disabled = false;
+        status.textContent = 'All shortcuts valid';
+        status.className = 'font-label text-label-sm text-text-secondary';
+      }
+    }
+
+    function simulateConflict() {
+      document.getElementById('sc-pause').value = document.getElementById('sc-start').value;
+      validateShortcuts();
+    }
+
+    function resetShortcuts() {
+      document.getElementById('sc-start').value = 'Ctrl+Alt+S';
+      document.getElementById('sc-pause').value = 'Ctrl+Alt+P';
+      document.getElementById('sc-stop').value = 'Ctrl+Alt+X';
+      validateShortcuts();
+    }
+
+    function saveShortcuts() {
+      const status = document.getElementById('save-status');
+      status.textContent = 'Saved shortcuts';
+      status.className = 'font-label text-label-sm text-success';
+    }
+  </script>
+
+
+</body></html>

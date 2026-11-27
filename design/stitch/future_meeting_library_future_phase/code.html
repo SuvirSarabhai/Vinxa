@@ -1,0 +1,281 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Future Meeting Library (Future Phase)</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-[1024px] flex flex-col" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+  <!-- Windows Titlebar -->
+  <div class="h-9 bg-surface-nav border-b border-border-neutral px-md flex items-center justify-between select-none">
+    <div class="flex items-center gap-sm">
+      <span class="w-5 h-5 rounded-xs bg-primary text-on-primary flex items-center justify-center font-headline text-label-sm font-bold">V</span>
+      <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal">Vinxa — Meeting Library (Future phase concept)</span>
+    </div>
+    <div class="flex items-center gap-xs text-text-secondary">
+      <button type="button" aria-label="Minimize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">remove</span>
+      </button>
+      <button type="button" aria-label="Maximize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60">
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">crop_square</span>
+      </button>
+      <button type="button" aria-label="Close window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-error hover:text-on-error">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header class="bg-surface border-b border-border-neutral px-lg py-md flex flex-wrap items-center justify-between gap-md">
+    <div class="flex items-center gap-md">
+      <h1 data-design-text-token="headline-md" class="font-headline text-headline-md text-heading-teal">Meeting Library</h1>
+      <span class="px-sm py-xs rounded-full bg-surface-subtle text-text-secondary border border-border-neutral font-label text-label-sm">Future phase</span>
+    </div>
+
+    <div class="flex items-center gap-xs">
+      <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary mr-xs">View state:</span>
+      <button type="button" onclick="setLibraryView(&#39;populated&#39;)" class="lib-btn px-sm py-xs rounded-xs bg-primary text-on-primary font-label text-label-sm">Populated</button>
+      <button type="button" onclick="setLibraryView(&#39;no-results&#39;)" class="lib-btn px-sm py-xs rounded-xs bg-surface border border-border-neutral text-heading-teal font-label text-label-sm">No results</button>
+      <button type="button" onclick="setLibraryView(&#39;empty&#39;)" class="lib-btn px-sm py-xs rounded-xs bg-surface border border-border-neutral text-heading-teal font-label text-label-sm">Empty library</button>
+    </div>
+  </header>
+
+  <!-- Future Phase Notice Banner -->
+  <div class="bg-surface-nav border-b border-border-neutral px-lg py-sm flex items-center gap-sm">
+    <span class="material-symbols-outlined text-[18px] text-text-secondary" aria-hidden="true">info</span>
+    <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">
+      <strong>Future phase concept:</strong> Local meeting history, search, and saved exports are planned for a later release and are not implemented in Phase 2 Demo.
+    </p>
+  </div>
+
+  <main class="flex-1 max-w-[1200px] w-full mx-auto p-lg flex flex-col gap-lg">
+
+    <!-- Search Bar -->
+    <div class="flex items-center justify-between gap-md">
+      <div class="relative flex-1 max-w-md flex items-center">
+        <span class="material-symbols-outlined text-[18px] text-text-secondary absolute left-3 pointer-events-none" aria-hidden="true">search</span>
+        <input id="library-search" type="search" placeholder="Search saved meetings by title..." oninput="filterMeetings(this.value)" class="w-full pl-10 pr-md py-sm rounded-sm bg-surface border border-border-neutral text-body-md text-on-surface placeholder:text-text-secondary/60 focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+      </div>
+      <span id="library-count" data-design-text-token="label-md" class="font-label text-label-md text-text-secondary">3 saved sessions</span>
+    </div>
+
+    <!-- Populated Grid -->
+    <section id="library-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-md items-stretch">
+      <article class="meeting-card bg-surface border border-border-neutral rounded-lg p-md shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col justify-between gap-md" data-title="product architecture sync">
+        <div class="flex flex-col gap-sm">
+          <header class="flex items-start justify-between gap-sm">
+            <div>
+              <h2 data-design-text-token="title-md" class="font-title text-title-md text-heading-teal">Product Architecture Sync</h2>
+              <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary tabular-nums">Nov 24, 2026 · 32:14</p>
+            </div>
+            <span class="px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal font-label text-label-sm">Completed</span>
+          </header>
+          <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Local faster-whisper latency benchmarks and Windows WASAPI loopback routing.</p>
+        </div>
+        <footer class="flex items-center justify-between gap-xs pt-sm border-t border-border-neutral">
+          <button type="button" class="px-sm py-xs rounded-sm bg-primary text-on-primary hover:bg-primary-hover font-label text-label-md">Open</button>
+          <div class="flex items-center gap-xs">
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Rename</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Export</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-error hover:bg-error-container font-label text-label-sm">Delete</button>
+          </div>
+        </footer>
+      </article>
+
+      <article class="meeting-card bg-surface border border-border-neutral rounded-lg p-md shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col justify-between gap-md" data-title="customer onboarding feedback">
+        <div class="flex flex-col gap-sm">
+          <header class="flex items-start justify-between gap-sm">
+            <div>
+              <h2 data-design-text-token="title-md" class="font-title text-title-md text-heading-teal">Customer Onboarding Feedback</h2>
+              <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary tabular-nums">Nov 21, 2026 · 45:08</p>
+            </div>
+            <span class="px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal font-label text-label-sm">Completed</span>
+          </header>
+          <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Reviewed consent announcement wording and floating overlay opacity defaults.</p>
+        </div>
+        <footer class="flex items-center justify-between gap-xs pt-sm border-t border-border-neutral">
+          <button type="button" class="px-sm py-xs rounded-sm bg-primary text-on-primary hover:bg-primary-hover font-label text-label-md">Open</button>
+          <div class="flex items-center gap-xs">
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Rename</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Export</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-error hover:bg-error-container font-label text-label-sm">Delete</button>
+          </div>
+        </footer>
+      </article>
+
+      <article class="meeting-card bg-surface border border-border-neutral rounded-lg p-md shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col justify-between gap-md" data-title="q4 security &amp; offline privacy review">
+        <div class="flex flex-col gap-sm">
+          <header class="flex items-start justify-between gap-sm">
+            <div>
+              <h2 data-design-text-token="title-md" class="font-title text-title-md text-heading-teal">Q4 Security &amp; Offline Privacy Review</h2>
+              <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary tabular-nums">Nov 18, 2026 · 19:50</p>
+            </div>
+            <span class="px-sm py-0.5 rounded-full bg-paused-container text-on-paused-container font-label text-label-sm">Stopped early</span>
+          </header>
+          <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Verified zero outbound network calls during local transcription sessions.</p>
+        </div>
+        <footer class="flex items-center justify-between gap-xs pt-sm border-t border-border-neutral">
+          <button type="button" class="px-sm py-xs rounded-sm bg-primary text-on-primary hover:bg-primary-hover font-label text-label-md">Open</button>
+          <div class="flex items-center gap-xs">
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Rename</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-text-secondary hover:bg-surface-nav font-label text-label-sm">Export</button>
+            <button type="button" class="px-sm py-xs rounded-sm text-error hover:bg-error-container font-label text-label-sm">Delete</button>
+          </div>
+        </footer>
+      </article>
+    </section>
+
+    <!-- No-Results State -->
+    <section id="library-no-results" class="hidden flex-1 bg-surface border border-border-neutral rounded-lg p-xl flex flex-col items-center justify-center text-center gap-md min-h-[360px]">
+      <div class="w-12 h-12 rounded-lg bg-surface-subtle text-text-secondary flex items-center justify-center">
+        <span class="material-symbols-outlined text-[24px]" aria-hidden="true">search_off</span>
+      </div>
+      <div class="max-w-sm flex flex-col gap-xs">
+        <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">No matching meetings</h2>
+        <p data-design-text-token="body-md" class="font-body text-body-md text-text-secondary">No saved sessions match your current search query. Try a different keyword or clear the search filter.</p>
+      </div>
+      <button type="button" onclick="setLibraryView(&#39;populated&#39;)" class="px-md py-sm rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav font-label text-label-md">
+        Clear search
+      </button>
+    </section>
+
+    <!-- Empty Library State -->
+    <section id="library-empty" class="hidden flex-1 bg-surface border border-border-neutral rounded-lg p-xl flex flex-col items-center justify-center text-center gap-md min-h-[360px]">
+      <div class="w-12 h-12 rounded-lg bg-surface-mint text-heading-teal flex items-center justify-center">
+        <span class="material-symbols-outlined text-[24px]" aria-hidden="true">folder_open</span>
+      </div>
+      <div class="max-w-sm flex flex-col gap-xs">
+        <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">No saved meetings yet</h2>
+        <p data-design-text-token="body-md" class="font-body text-body-md text-text-secondary">Completed local sessions will appear here in a future phase once local meeting storage is enabled.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    function setLibraryView(mode) {
+      document.getElementById('library-grid').classList.toggle('hidden', mode !== 'populated');
+      document.getElementById('library-no-results').classList.toggle('hidden', mode !== 'no-results');
+      document.getElementById('library-empty').classList.toggle('hidden', mode !== 'empty');
+      document.getElementById('library-count').textContent = mode === 'populated' ? '3 saved sessions' : '0 saved sessions';
+      if (mode === 'populated') document.getElementById('library-search').value = '';
+      if (mode === 'no-results') document.getElementById('library-search').value = 'quarterly budget';
+    }
+
+    function filterMeetings(q) {
+      const term = q.trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('.meeting-card').forEach(card => {
+        const match = !term || card.dataset.title.includes(term);
+        card.classList.toggle('hidden', !match);
+        if (match) visible++;
+      });
+      document.getElementById('library-grid').classList.toggle('hidden', visible === 0);
+      document.getElementById('library-no-results').classList.toggle('hidden', visible > 0);
+      document.getElementById('library-empty').classList.add('hidden');
+      document.getElementById('library-count').textContent = visible + ' saved sessions';
+    }
+  </script>
+
+
+</body></html>

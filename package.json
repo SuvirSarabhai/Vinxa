@@ -16,7 +16,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "smoke:win": "node scripts/smoke.cjs",
-    "package:win": "pnpm build && electron-builder --win nsis portable"
+    "smoke:ui": "node scripts/smoke-ui.cjs",
+    "smoke:ui:live": "node scripts/smoke-live-ui.cjs",
+    "sidecar:build": "node scripts/build-sidecar.cjs",
+    "package:win": "pnpm sidecar:build && pnpm build && electron-builder --win nsis portable"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",

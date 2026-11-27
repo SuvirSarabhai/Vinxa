@@ -37,11 +37,18 @@ export class SessionController {
       notice: backend.mode === 'demo' ? 'Written sample only. No audio is captured.' : 'Local recording backend connected.',
       levels: { mic: null, system: null }
     }
+    backend.bindOwner?.({
+      getState: () => this.current.state,
+      hasConsent: (sessionId) => this.current.sessionId === sessionId &&
+        ['recording', 'paused', 'stopping', 'processing'].includes(this.current.state)
+    })
   }
 
   snapshot(): SessionSnapshot {
     return structuredClone(this.current)
   }
+
+  getState(): RecordingState { return this.current.state }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
@@ -100,6 +107,9 @@ export class SessionController {
         this.current.levels = { mic: null, system: null }
         this.current.notice = this.backend.mode === 'demo' ? 'Playing a short written sample. Stop ends the demo session.' : 'Recording locally.'
         this.startedAt = this.clock()
+        this.current.startedAtMs = this.startedAt
+        this.current.endedAtMs = null
+        const sessionStartMs = performance.now()
         this.transition('recording')
         try {
           await this.backend.start(validated, sessionId, {
@@ -119,23 +129,29 @@ export class SessionController {
               this.current.notice = message
               this.publish()
             },
-            failure: () => {
+            discardPartials: () => {
+              if (!this.isCurrent(generation)) return
+              this.current.segments = this.current.segments.filter((segment) => segment.isFinal)
+              this.publish()
+            },
+            failure: (message) => {
               if (!this.isCurrent(generation) || !['recording', 'paused', 'stopping'].includes(this.current.state)) return
-              this.fail('The recording backend stopped unexpectedly.')
+              this.fail(message ?? 'The recording backend stopped unexpectedly.')
               void this.enqueue(() => this.backend.stop()).catch(() => undefined)
             }
-          })
-        } catch {
-          if (this.isCurrent(generation) && !this.hasState('error')) this.fail('The recording backend could not start.')
+          }, sessionStartMs)
+        } catch (error) {
+          const message = `The recording backend could not start. ${error instanceof Error ? error.message : ''}`.trim()
+          if (this.isCurrent(generation) && !this.hasState('error')) this.fail(message)
           await this.backend.stop().catch(() => undefined)
-          throw new Error('The recording backend could not start.')
+          throw new Error(message)
         }
       })
     } catch {
       if (this.isCurrent(generation)) {
         this.current.error = this.hasState('awaiting-consent')
           ? 'Consent could not be saved. Capture was not started. Try again.'
-          : 'The recording backend could not start.'
+          : this.current.error ?? 'The recording backend could not start.'
       }
       throw new Error(this.current.error ?? 'The session start was cancelled.')
     } finally {
@@ -154,16 +170,18 @@ export class SessionController {
       this.publish()
       try {
         if (this.hasState('recording')) {
+          const pausedAt = this.elapsed()
           await this.backend.pause()
           if (!this.hasState('recording') || this.disposed) return
-          this.current.pauses.push({ startMs: this.elapsed(), endMs: null })
+          this.current.pauses.push({ startMs: pausedAt, endMs: null })
           this.current.levels = { mic: null, system: null }
           this.transition('paused')
         } else {
-          await this.backend.resume()
-          if (!this.hasState('paused') || this.disposed) return
-          this.finishPause()
+          const resumedAt = this.elapsed()
           this.transition('recording')
+          await this.backend.resume()
+          if (!this.hasState('recording') || this.disposed) return
+          this.finishPause(resumedAt)
         }
       } catch {
         if (!this.hasState('error')) this.fail('Pause or resume failed. The session was stopped.')
@@ -191,6 +209,7 @@ export class SessionController {
         if (this.disposed || !this.hasState('stopping')) return
         this.current.levels = { mic: null, system: null }
         this.current.notice = 'Session stopped. History and AI notes will be connected in later phases.'
+        this.current.endedAtMs = this.clock()
         this.transition('completed')
       } catch {
         if (!this.hasState('error')) this.fail('The backend could not stop cleanly.')
@@ -202,11 +221,11 @@ export class SessionController {
     })
   }
 
-  dispose(): void {
+  dispose(): Promise<void> {
     this.disposed = true
     this.generation += 1
     this.listeners.clear()
-    void this.enqueue(() => this.backend.stop()).catch(() => undefined)
+    return this.enqueue(() => this.backend.stop())
   }
 
   private receiveSegment(generation: number, segment: TranscriptSegment): void {
@@ -217,14 +236,20 @@ export class SessionController {
     if (value.source === 'mic' ? !this.current.config.microphoneEnabled : !this.current.config.systemAudioEnabled) return
     const index = this.current.segments.findIndex((existing) => existing.id === value.id)
     const previous = this.current.segments[index]
-    if (previous && (previous.isFinal || previous.source !== value.source || previous.startMs !== value.startMs)) return
+    if (previous && (previous.isFinal || previous.source !== value.source)) return
+    if (!value.text.trim()) {
+      if (value.isFinal && index >= 0) { this.current.segments.splice(index, 1); this.publish() }
+      return
+    }
     if (index < 0) this.current.segments.push(value)
     else this.current.segments[index] = value
     this.publish()
   }
 
   private fail(message: string): void {
+    this.current.endedAtMs = this.clock()
     this.current.error = message
+    this.current.segments = this.current.segments.filter((segment) => segment.isFinal)
     this.current.levels = { mic: null, system: null }
     this.finishPause()
     this.transition('error')
@@ -234,9 +259,9 @@ export class SessionController {
     return Math.max(0, this.clock() - this.startedAt)
   }
 
-  private finishPause(): void {
+  private finishPause(endedAt = this.elapsed()): void {
     const last = this.current.pauses.at(-1)
-    if (last && last.endMs === null) last.endMs = this.elapsed()
+    if (last && last.endMs === null) last.endMs = endedAt
   }
 
   private isCurrent(generation: number): boolean {

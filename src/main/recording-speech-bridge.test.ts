@@ -81,4 +81,18 @@ describe('Developer A recording integration boundary', () => {
     detach()
     expect(app.listenerCount('before-quit')).toBe(0)
   })
+
+  it('admits trailing stop frames only after an explicitly authorized drain', async () => {
+    const test = setup()
+    test.consent(true); test.state('recording')
+    await test.bridge.start(test.session)
+    test.state('stopping')
+    const frame = new ArrayBuffer(3201)
+    expect(test.bridge.taggedFrame(test.session.sessionId, frame, { startSample: 0 })).toBe(false)
+    test.bridge.beginDrain(test.session.sessionId)
+    expect(test.bridge.taggedFrame(test.session.sessionId, frame, { startSample: 0 })).toBe(true)
+    test.consent(false)
+    expect(test.bridge.taggedFrame(test.session.sessionId, frame, { startSample: 1600 })).toBe(false)
+    await test.bridge.stop()
+  })
 })

@@ -1,5 +1,12 @@
 # Speech Sidecar
 
+The integrated Phase 2 app now has a Windows runtime/model packaging command.
+Install requirements-package.txt and run pnpm package:win from the repo root.
+The builder freezes the server with PyInstaller and copies an already cached
+converted model; it does not download one. See
+[Phase 2 completion checks](../docs/phase2-completion-checklist.md). Packaging and
+the new lifecycle regressions have not been executed during this implementation.
+
 Phase 1 implements local WAV recognition through engine.py and repeatable
 benchmarks in benchmark.py and benchmark_cpp.py. See
 [Developer B setup](../README-developer-b.md) and

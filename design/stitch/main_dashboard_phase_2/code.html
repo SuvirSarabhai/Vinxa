@@ -1,0 +1,431 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Main Dashboard (Phase 2)</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-[1024px] flex flex-col" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+  <!-- Windows Desktop Application Frame (1200x800 target) -->
+  <div class="min-h-[1024px] flex flex-col bg-background" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+    <!-- Windows Titlebar (No browser chrome) -->
+    <div class="h-9 bg-surface-nav border-b border-border-neutral px-md flex items-center justify-between select-none">
+      <div class="flex items-center gap-sm">
+        <span class="w-5 h-5 rounded-xs bg-primary text-on-primary flex items-center justify-center font-headline text-label-sm font-bold">V</span>
+        <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal">Vinxa — Local Meeting Memory</span>
+      </div>
+      <div class="flex items-center gap-xs text-text-secondary">
+        <button type="button" aria-label="Minimize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60 transition-colors">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">remove</span>
+        </button>
+        <button type="button" aria-label="Maximize window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-border-neutral/60 transition-colors">
+          <span class="material-symbols-outlined text-[14px]" aria-hidden="true">crop_square</span>
+        </button>
+        <button type="button" aria-label="Close window" class="w-8 h-7 flex items-center justify-center rounded-xs hover:bg-error hover:text-on-error transition-colors">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- App Header -->
+    <header class="bg-surface border-b border-border-neutral px-lg py-md flex flex-wrap items-center justify-between gap-md">
+      <div class="flex items-center gap-md">
+        <div class="flex items-center gap-sm">
+          <div class="w-8 h-8 rounded-sm bg-surface-mint border border-primary/40 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[18px] text-heading-teal" aria-hidden="true">graphic_eq</span>
+          </div>
+          <span data-design-text-token="headline-md" class="font-headline text-headline-md text-heading-teal">Vinxa</span>
+        </div>
+
+        <!-- COMPONENT: badge-demo -->
+        <span data-component-id="badge-demo" data-component-type="badge" data-component-variant="status" role="status" class="inline-flex items-center gap-xs px-sm py-xs rounded-full bg-surface-mint text-heading-teal border border-primary/30">
+          <span data-design-text-token="label-sm" class="font-label text-label-sm">Demo</span>
+        </span>
+
+        <!-- Session Status Pill -->
+        <span id="status-pill" role="status" class="inline-flex items-center gap-xs px-sm py-xs rounded-full bg-surface-subtle text-text-secondary border border-border-neutral">
+          <span id="status-dot" class="w-2 h-2 rounded-full bg-text-secondary" aria-hidden="true"></span>
+          <span id="status-text" data-design-text-token="label-sm" class="font-label text-label-sm">Idle</span>
+        </span>
+      </div>
+
+      <div class="flex items-center gap-sm">
+        <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary hidden md:inline">
+          Demo transcript data · No live audio captured
+        </span>
+        <!-- COMPONENT: button-icon -->
+        <button data-component-id="button-icon" data-component-type="button" data-component-variant="icon" type="button" aria-label="Open Settings" class="inline-flex items-center justify-center gap-xs px-sm py-xs h-9 rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors duration-state-change">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">settings</span>
+          <span data-design-text-token="label-md" class="font-label text-label-md">Settings</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Prototype State Switcher (for inspecting all 8 required states) -->
+    <div class="bg-surface-nav border-b border-border-neutral px-lg py-sm flex flex-wrap items-center justify-between gap-sm">
+      <div class="flex items-center gap-xs flex-wrap">
+        <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary mr-xs">Preview state:</span>
+        <button type="button" data-state-btn="idle" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-primary text-on-primary">Idle</button>
+        <button type="button" data-state-btn="consent" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Awaiting Consent</button>
+        <button type="button" data-state-btn="starting" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Starting</button>
+        <button type="button" data-state-btn="recording" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Recording</button>
+        <button type="button" data-state-btn="paused" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Paused</button>
+        <button type="button" data-state-btn="stopping" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Stopping</button>
+        <button type="button" data-state-btn="completed" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Completed</button>
+        <button type="button" data-state-btn="error" class="state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint">Error</button>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-[1200px] w-full mx-auto p-lg grid grid-cols-1 lg:grid-cols-12 gap-lg items-start">
+
+      <!-- Error Banner (Visible only in Error state) -->
+      <div id="error-banner" class="hidden lg:col-span-12 bg-error-container border border-error/30 rounded-md p-md flex items-start justify-between gap-md" role="alert">
+        <div class="flex items-start gap-sm">
+          <span class="material-symbols-outlined text-[20px] text-error mt-0.5" aria-hidden="true">error</span>
+          <div>
+            <p data-design-text-token="title-md" class="font-title text-title-md text-on-error-container">Local audio device unavailable</p>
+            <p data-design-text-token="body-sm" class="font-body text-body-sm text-on-error-container">Vinxa could not initialize the selected microphone (&#34;USB-C Studio Mic&#34;). Check Windows privacy permissions or select another input device in Setup.</p>
+          </div>
+        </div>
+        <button type="button" onclick="setAppState(&#39;idle&#39;)" class="px-sm py-xs rounded-sm bg-surface border border-error/30 text-on-error-container font-label text-label-sm hover:bg-error hover:text-on-error transition-colors">
+          Dismiss
+        </button>
+      </div>
+
+      <!-- Left Column: Session Controls, Audio Status Cards & Shortcut Hints -->
+      <section class="lg:col-span-4 flex flex-col gap-md">
+
+        <!-- Session Header & Primary Action Card -->
+        <div class="bg-surface border border-border-neutral rounded-lg p-lg shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col gap-md">
+          <div class="flex items-start justify-between gap-sm">
+            <div>
+              <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Current session</span>
+              <h1 id="meeting-title" data-design-text-token="headline-md" class="font-headline text-headline-md text-heading-teal mt-xs">Product Architecture Sync</h1>
+            </div>
+            <div class="text-right">
+              <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary block">Duration</span>
+              <span id="session-duration" data-design-text-token="headline-md" class="font-mono text-headline-md text-heading-teal tabular-nums">00:00</span>
+            </div>
+          </div>
+
+          <!-- Primary & Session Controls -->
+          <div class="flex flex-col gap-sm pt-xs">
+            <!-- COMPONENT: button-with-icon -->
+            <button id="btn-start" data-component-id="button-with-icon" data-component-type="button" data-component-variant="with-icon" type="button" onclick="setAppState(&#39;recording&#39;)" class="w-full inline-flex items-center justify-center gap-sm px-md py-sm rounded-sm bg-primary text-on-primary hover:bg-primary-hover active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 transition-colors duration-state-change disabled:opacity-45 disabled:cursor-not-allowed">
+              <span class="material-symbols-outlined text-[18px]" aria-hidden="true">play_arrow</span>
+              <span data-design-text-token="label-lg" class="font-label text-label-lg">Start Session</span>
+            </button>
+
+            <div class="grid grid-cols-2 gap-sm">
+              <!-- COMPONENT: button-secondary -->
+              <button id="btn-pause" data-component-id="button-secondary-disabled" data-component-type="button" data-component-variant="secondary" type="button" disabled onclick="togglePause()" class="inline-flex items-center justify-center gap-xs px-md py-sm rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors duration-state-change disabled:bg-surface-subtle disabled:text-text-secondary disabled:cursor-not-allowed">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">pause</span>
+                <span id="btn-pause-label" data-design-text-token="label-lg" class="font-label text-label-lg">Pause</span>
+              </button>
+
+              <!-- COMPONENT: button-destructive -->
+              <button id="btn-stop" data-component-id="button-destructive" data-component-type="button" data-component-variant="destructive" type="button" disabled onclick="setAppState(&#39;completed&#39;)" class="inline-flex items-center justify-center gap-xs px-md py-sm rounded-sm bg-recording-container text-on-recording-container border border-recording/20 hover:bg-recording hover:text-on-recording focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-recording transition-colors duration-state-change disabled:bg-surface-subtle disabled:text-text-secondary disabled:border-border-neutral disabled:cursor-not-allowed">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">stop</span>
+                <span data-design-text-token="label-lg" class="font-label text-label-lg">Stop</span>
+              </button>
+            </div>
+
+            <button id="btn-overlay" data-component-id="button-secondary" data-component-type="button" data-component-variant="secondary" type="button" class="w-full inline-flex items-center justify-center gap-xs px-md py-sm rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors duration-state-change">
+              <span class="material-symbols-outlined text-[18px]" aria-hidden="true">picture_in_picture_alt</span>
+              <span data-design-text-token="label-md" class="font-label text-label-md">Show Overlay</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Microphone Status Card -->
+        <!-- COMPONENT: card-elevated -->
+        <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="bg-surface border border-border-neutral rounded-lg p-md shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col gap-sm">
+          <header class="flex items-center justify-between gap-sm">
+            <div class="flex items-center gap-sm">
+              <span class="w-8 h-8 rounded-sm bg-surface-mint text-heading-teal flex items-center justify-center">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">mic</span>
+              </span>
+              <div>
+                <h2 data-design-text-token="title-md" class="font-title text-title-md text-heading-teal">Microphone</h2>
+                <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Realtek(R) Audio Array</p>
+              </div>
+            </div>
+            <span id="mic-badge" data-design-text-token="label-sm" class="px-sm py-xs rounded-full bg-surface-mint text-heading-teal font-label text-label-sm">Ready</span>
+          </header>
+          <div class="flex items-center gap-xs pt-xs">
+            <div class="flex-1 h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+              <div id="mic-meter" class="h-full w-0 bg-primary rounded-full transition-all duration-state-change"></div>
+            </div>
+            <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Demo</span>
+          </div>
+        </article>
+
+        <!-- System Audio Status Card -->
+        <!-- COMPONENT: card-elevated -->
+        <article data-component-id="card-elevated" data-component-type="card" data-component-variant="elevated" class="bg-surface border border-border-neutral rounded-lg p-md shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col gap-sm">
+          <header class="flex items-center justify-between gap-sm">
+            <div class="flex items-center gap-sm">
+              <span class="w-8 h-8 rounded-sm bg-surface-mint text-heading-teal flex items-center justify-center">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">volume_up</span>
+              </span>
+              <div>
+                <h2 data-design-text-token="title-md" class="font-title text-title-md text-heading-teal">System Audio</h2>
+                <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Windows Loopback (WASAPI)</p>
+              </div>
+            </div>
+            <span id="sys-badge" data-design-text-token="label-sm" class="px-sm py-xs rounded-full bg-surface-mint text-heading-teal font-label text-label-sm">Ready</span>
+          </header>
+          <div class="flex items-center gap-xs pt-xs">
+            <div class="flex-1 h-1.5 rounded-full bg-surface-subtle overflow-hidden">
+              <div id="sys-meter" class="h-full w-0 bg-primary rounded-full transition-all duration-state-change"></div>
+            </div>
+            <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Demo</span>
+          </div>
+        </article>
+
+        <!-- Keyboard Shortcut Hints -->
+        <div class="bg-surface-nav border border-border-neutral rounded-lg p-md flex flex-col gap-sm">
+          <h2 data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Keyboard shortcuts</h2>
+          <div class="flex flex-col gap-xs">
+            <div class="flex items-center justify-between">
+              <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Start session</span>
+              <kbd data-design-text-token="mono-sm" class="font-mono text-mono-sm px-sm py-xs rounded-xs bg-surface border border-border-neutral text-heading-teal">Ctrl+Alt+S</kbd>
+            </div>
+            <div class="flex items-center justify-between">
+              <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Pause / Resume</span>
+              <kbd data-design-text-token="mono-sm" class="font-mono text-mono-sm px-sm py-xs rounded-xs bg-surface border border-border-neutral text-heading-teal">Ctrl+Alt+P</kbd>
+            </div>
+            <div class="flex items-center justify-between">
+              <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Stop session</span>
+              <kbd data-design-text-token="mono-sm" class="font-mono text-mono-sm px-sm py-xs rounded-xs bg-surface border border-border-neutral text-heading-teal">Ctrl+Alt+X</kbd>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Column: Transcript Panel -->
+      <section class="lg:col-span-8 bg-surface border border-border-neutral rounded-lg shadow-[0_2px_8px_rgba(17,48,50,0.04)] flex flex-col min-h-[600px]">
+        <header class="px-lg py-md border-b border-border-neutral flex items-center justify-between gap-md">
+          <div>
+            <h2 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Live Transcript</h2>
+            <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">Local faster-whisper + Silero VAD pipeline (simulated in Demo mode)</p>
+          </div>
+          <span id="transcript-count" data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">0 entries</span>
+        </header>
+
+        <!-- Empty State (shown when idle / awaiting consent / error) -->
+        <div id="transcript-empty" class="flex-1 flex flex-col items-center justify-center p-xl text-center max-w-md mx-auto gap-md">
+          <div class="w-12 h-12 rounded-lg bg-surface-mint text-heading-teal flex items-center justify-center">
+            <span class="material-symbols-outlined text-[24px]" aria-hidden="true">subtitles</span>
+          </div>
+          <div class="flex flex-col gap-xs">
+            <h3 data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Ready to transcribe locally</h3>
+            <p data-design-text-token="body-md" class="font-body text-body-md text-text-secondary text-pretty">
+              Click <strong>Start Session</strong> or press <kbd class="font-mono text-mono-sm px-xs py-0.5 rounded-xs bg-surface-subtle border border-border-neutral text-heading-teal">Ctrl+Alt+S</kbd> to review consent and open the floating overlay.
+            </p>
+            <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary pt-xs">
+              Current Phase 2 preview uses demo transcript entries. No live audio is captured.
+            </p>
+          </div>
+        </div>
+
+        <!-- Transcript Entries (shown in recording / paused / completed) -->
+        <div id="transcript-list" class="hidden flex-1 p-lg flex flex-col gap-md overflow-y-auto">
+          <div class="flex items-start gap-md">
+            <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5 shrink-0">00:12</span>
+            <div class="flex flex-col gap-xs">
+              <span data-design-text-token="label-sm" class="inline-flex w-fit px-sm py-0.5 rounded-xs bg-surface-mint text-heading-teal font-label text-label-sm">You</span>
+              <p data-design-text-token="body-lg" class="font-body text-body-lg text-on-surface">Let&#39;s confirm the local Whisper model latency before we ship the Windows desktop build.</p>
+            </div>
+          </div>
+
+          <div class="flex items-start gap-md">
+            <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5 shrink-0">00:28</span>
+            <div class="flex flex-col gap-xs">
+              <span data-design-text-token="label-sm" class="inline-flex w-fit px-sm py-0.5 rounded-xs bg-surface-subtle border border-border-neutral text-heading-teal font-label text-label-sm">Remote</span>
+              <p data-design-text-token="body-lg" class="font-body text-body-lg text-on-surface">Silero VAD filters silence cleanly, so partial lines settle in under 400 milliseconds on CPU.</p>
+            </div>
+          </div>
+
+          <!-- Pause Gap Marker -->
+          <div id="pause-gap-marker" class="hidden my-xs flex items-center gap-sm">
+            <div class="flex-1 h-px bg-paused/40"></div>
+            <span data-design-text-token="label-sm" class="px-sm py-xs rounded-full bg-paused-container text-on-paused-container font-label text-label-sm">
+              Paused · 00:42 gap (01:05 – 01:47)
+            </span>
+            <div class="flex-1 h-px bg-paused/40"></div>
+          </div>
+
+          <div class="flex items-start gap-md">
+            <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5 shrink-0">01:49</span>
+            <div class="flex flex-col gap-xs">
+              <span data-design-text-token="label-sm" class="inline-flex w-fit px-sm py-0.5 rounded-xs bg-surface-mint text-heading-teal font-label text-label-sm">You</span>
+              <p data-design-text-token="body-lg" class="font-body text-body-lg text-on-surface">Great. Keep all audio buffers in memory only for Phase 2 until local storage is enabled.</p>
+            </div>
+          </div>
+
+          <div id="partial-line" class="flex items-start gap-md">
+            <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary/70 tabular-nums pt-0.5 shrink-0">02:04</span>
+            <div class="flex flex-col gap-xs">
+              <span data-design-text-token="label-sm" class="inline-flex w-fit px-sm py-0.5 rounded-xs bg-surface-subtle border border-border-neutral text-text-secondary font-label text-label-sm">Remote · partial</span>
+              <p data-design-text-token="body-lg" class="font-body text-body-lg text-text-secondary italic">Agreed, and we will make the participant consent prompt explicit before...</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    let currentState = 'idle';
+    const states = {
+      idle: { label: 'Idle', dot: 'bg-text-secondary', pill: 'bg-surface-subtle text-text-secondary border-border-neutral', duration: '00:00', showTranscript: false, pauseGap: false, error: false, startDisabled: false, pauseDisabled: true, stopDisabled: true, meter: '0%' },
+      consent: { label: 'Awaiting Consent', dot: 'bg-primary', pill: 'bg-surface-mint text-heading-teal border-primary/40', duration: '00:00', showTranscript: false, pauseGap: false, error: false, startDisabled: true, pauseDisabled: true, stopDisabled: true, meter: '0%' },
+      starting: { label: 'Starting...', dot: 'bg-primary', pill: 'bg-surface-mint text-heading-teal border-primary/40', duration: '00:00', showTranscript: false, pauseGap: false, error: false, startDisabled: true, pauseDisabled: true, stopDisabled: false, meter: '18%' },
+      recording: { label: 'Recording', dot: 'bg-recording', pill: 'bg-recording-container text-on-recording-container border-recording/20', duration: '02:04', showTranscript: true, pauseGap: false, error: false, startDisabled: true, pauseDisabled: false, stopDisabled: false, meter: '62%' },
+      paused: { label: 'Paused', dot: 'bg-paused', pill: 'bg-paused-container text-on-paused-container border-paused/20', duration: '02:04', showTranscript: true, pauseGap: true, error: false, startDisabled: true, pauseDisabled: false, stopDisabled: false, meter: '0%' },
+      stopping: { label: 'Stopping...', dot: 'bg-text-secondary', pill: 'bg-surface-subtle text-heading-teal border-border-neutral', duration: '02:04', showTranscript: true, pauseGap: true, error: false, startDisabled: true, pauseDisabled: true, stopDisabled: true, meter: '0%' },
+      completed: { label: 'Completed', dot: 'bg-success', pill: 'bg-surface-mint text-heading-teal border-primary/30', duration: '02:04', showTranscript: true, pauseGap: true, error: false, startDisabled: false, pauseDisabled: true, stopDisabled: true, meter: '0%' },
+      error: { label: 'Error', dot: 'bg-error', pill: 'bg-error-container text-on-error-container border-error/20', duration: '00:00', showTranscript: false, pauseGap: false, error: true, startDisabled: false, pauseDisabled: true, stopDisabled: true, meter: '0%' }
+    };
+
+    function setAppState(next) {
+      currentState = next;
+      const cfg = states[next];
+      document.getElementById('status-text').textContent = cfg.label;
+      document.getElementById('status-dot').className = 'w-2 h-2 rounded-full ' + cfg.dot;
+      document.getElementById('status-pill').className = 'inline-flex items-center gap-xs px-sm py-xs rounded-full border ' + cfg.pill;
+      document.getElementById('session-duration').textContent = cfg.duration;
+      document.getElementById('error-banner').classList.toggle('hidden', !cfg.error);
+      document.getElementById('transcript-empty').classList.toggle('hidden', cfg.showTranscript);
+      document.getElementById('transcript-list').classList.toggle('hidden', !cfg.showTranscript);
+      document.getElementById('pause-gap-marker').classList.toggle('hidden', !cfg.pauseGap);
+      document.getElementById('partial-line').classList.toggle('hidden', next !== 'recording');
+      document.getElementById('transcript-count').textContent = cfg.showTranscript ? (next === 'recording' ? '4 entries' : '3 entries') : '0 entries';
+      document.getElementById('btn-start').disabled = cfg.startDisabled;
+      document.getElementById('btn-pause').disabled = cfg.pauseDisabled;
+      document.getElementById('btn-stop').disabled = cfg.stopDisabled;
+      document.getElementById('btn-pause-label').textContent = next === 'paused' ? 'Resume' : 'Pause';
+      document.getElementById('mic-meter').style.width = cfg.meter;
+      document.getElementById('sys-meter').style.width = next === 'recording' ? '44%' : '0%';
+      document.querySelectorAll('.state-btn').forEach(btn => {
+        const active = btn.dataset.stateBtn === next;
+        btn.className = active
+          ? 'state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-primary text-on-primary'
+          : 'state-btn px-sm py-xs rounded-xs font-label text-label-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint';
+      });
+    }
+
+    function togglePause() {
+      setAppState(currentState === 'paused' ? 'recording' : 'paused');
+    }
+
+    document.querySelectorAll('.state-btn').forEach(btn => {
+      btn.addEventListener('click', () => setAppState(btn.dataset.stateBtn));
+    });
+  </script>
+
+
+</body></html>

@@ -1,0 +1,251 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Setup and Consent Window</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-background text-on-surface font-body min-h-[1024px] flex items-center justify-center p-md" data-stitch-vh="min-h-[1024px]===min-h-screen">
+
+  <!-- Windows Dialog Window (~580x800) -->
+  <div class="w-full max-w-[580px] bg-surface border border-border-neutral rounded-lg shadow-[0_12px_32px_rgba(17,48,50,0.08)] overflow-hidden flex flex-col">
+
+    <!-- Windows Titlebar -->
+    <div class="h-10 bg-surface-nav border-b border-border-neutral px-md flex items-center justify-between select-none">
+      <div class="flex items-center gap-sm">
+        <span class="w-5 h-5 rounded-xs bg-primary text-on-primary flex items-center justify-center font-headline text-label-sm font-bold">V</span>
+        <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Setup and Consent</span>
+        <!-- COMPONENT: badge-demo -->
+        <span data-component-id="badge-demo" data-component-type="badge" data-component-variant="status" role="status" class="inline-flex items-center px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal border border-primary/30">
+          <span data-design-text-token="label-sm" class="font-label text-label-sm">Demo</span>
+        </span>
+      </div>
+      <button type="button" aria-label="Close Setup window" class="w-7 h-7 flex items-center justify-center rounded-xs text-text-secondary hover:bg-error hover:text-on-error transition-colors">
+        <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+      </button>
+    </div>
+
+    <!-- Body -->
+    <main class="p-lg flex flex-col gap-md">
+      <div>
+        <h1 data-design-text-token="headline-lg" class="font-headline text-headline-lg text-heading-teal">Prepare local session</h1>
+        <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary mt-xs">
+          Confirm audio sources and participant consent before starting. Demo mode uses simulated lines; no live audio is captured.
+        </p>
+      </div>
+
+      <!-- Meeting Title Input -->
+      <!-- COMPONENT: input-field-text -->
+      <label data-component-id="input-field-text" data-component-type="input-field" data-component-variant="text" class="flex flex-col gap-xs">
+        <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Meeting title</span>
+        <input type="text" value="Product Architecture Sync" placeholder="Enter a meeting title" class="w-full px-md py-sm rounded-sm bg-surface border border-border-neutral text-body-md text-on-surface placeholder:text-text-secondary/60 focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+      </label>
+
+      <!-- Microphone Selector -->
+      <label class="flex flex-col gap-xs">
+        <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Microphone device</span>
+        <select class="w-full px-md py-sm rounded-sm bg-surface border border-border-neutral text-body-md text-on-surface focus:border-primary focus:ring-2 focus:ring-primary/25 focus:outline-none">
+          <option>Default — Realtek(R) Audio Microphone</option>
+          <option>USB-C Studio Microphone (Demo)</option>
+          <option>Bluetooth Headset Hands-Free</option>
+        </select>
+      </label>
+
+      <!-- Audio Source Checkboxes & Inactive Meters -->
+      <div class="bg-surface-subtle border border-border-neutral rounded-md p-md flex flex-col gap-sm">
+        <div class="flex items-center justify-between gap-md">
+          <label class="flex items-center gap-sm cursor-pointer">
+            <input type="checkbox" checked class="w-4 h-4 rounded-xs border-border-neutral text-primary focus:ring-primary">
+            <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Include microphone</span>
+          </label>
+          <div class="flex items-center gap-xs w-28">
+            <div class="flex-1 h-2 rounded-full bg-border-neutral overflow-hidden">
+              <div class="h-full w-0 bg-text-secondary/30"></div>
+            </div>
+            <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Inactive</span>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between gap-md">
+          <label class="flex items-center gap-sm cursor-pointer">
+            <input type="checkbox" checked class="w-4 h-4 rounded-xs border-border-neutral text-primary focus:ring-primary">
+            <span data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Include system audio</span>
+          </label>
+          <div class="flex items-center gap-xs w-28">
+            <div class="flex-1 h-2 rounded-full bg-border-neutral overflow-hidden">
+              <div class="h-full w-0 bg-text-secondary/30"></div>
+            </div>
+            <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Inactive</span>
+          </div>
+        </div>
+
+        <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary pt-xs border-t border-border-neutral">
+          Audio meters remain inactive until participant consent is confirmed.
+        </p>
+      </div>
+
+      <!-- Local Processing & Mute Behavior Notice -->
+      <div class="bg-surface-nav border border-border-neutral rounded-md p-md flex flex-col gap-sm">
+        <div class="flex items-start gap-sm">
+          <span class="material-symbols-outlined text-[18px] text-heading-teal mt-0.5" aria-hidden="true">shield_lock</span>
+          <div>
+            <p data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">100% local processing</p>
+            <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">
+              Vinxa runs faster-whisper and Silero VAD offline on your Windows machine. Audio never leaves your device.
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-sm pt-xs border-t border-border-neutral">
+          <span class="material-symbols-outlined text-[18px] text-paused mt-0.5" aria-hidden="true">mic_off</span>
+          <div>
+            <p data-design-text-token="label-md" class="font-label text-label-md text-heading-teal">Independent microphone capture</p>
+            <p data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">
+              Muting yourself inside a meeting app (Teams, Zoom, Google Meet) does <strong>not</strong> mute Vinxa&#39;s microphone. Use Pause or Stop in Vinxa.
+            </p>
+          </div>
+        </div>
+
+        <div class="pt-xs flex items-center justify-between gap-sm">
+          <button id="copy-announcement-btn" type="button" onclick="copyAnnouncement()" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors">
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">content_copy</span>
+            <span data-design-text-token="label-md" class="font-label text-label-md">Copy meeting announcement</span>
+          </button>
+          <span id="copy-feedback" data-design-text-token="label-sm" class="hidden font-label text-label-sm text-success">Copied to clipboard</span>
+        </div>
+      </div>
+
+      <!-- Required Participant Consent Checkbox -->
+      <label class="flex items-start gap-sm p-md rounded-md border border-border-neutral bg-surface hover:border-primary cursor-pointer transition-colors">
+        <input id="consent-checkbox" type="checkbox" onchange="toggleConfirm()" class="w-4 h-4 mt-0.5 rounded-xs border-border-neutral text-primary focus:ring-primary">
+        <span data-design-text-token="body-sm" class="font-body text-body-sm text-heading-teal">
+          <strong>Required:</strong> I confirm that all meeting participants have been notified and consent to local transcription.
+        </span>
+      </label>
+
+      <!-- Footer Actions -->
+      <footer class="flex items-center justify-end gap-sm pt-sm border-t border-border-neutral">
+        <button data-component-id="button-secondary" data-component-type="button" data-component-variant="secondary" type="button" class="px-md py-sm rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-nav focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary transition-colors">
+          <span data-design-text-token="label-lg" class="font-label text-label-lg">Cancel</span>
+        </button>
+
+        <button id="confirm-start-btn" data-component-id="button-primary" data-component-type="button" data-component-variant="primary" type="button" disabled class="px-lg py-sm rounded-sm bg-primary text-on-primary hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary focus-visible:ring-offset-2 transition-colors disabled:bg-surface-subtle disabled:text-text-secondary disabled:border disabled:border-border-neutral disabled:cursor-not-allowed">
+          <span data-design-text-token="label-lg" class="font-label text-label-lg">Confirm and Start</span>
+        </button>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    function toggleConfirm() {
+      const checked = document.getElementById('consent-checkbox').checked;
+      document.getElementById('confirm-start-btn').disabled = !checked;
+    }
+    function copyAnnouncement() {
+      const fb = document.getElementById('copy-feedback');
+      fb.classList.remove('hidden');
+      setTimeout(() => fb.classList.add('hidden'), 2000);
+    }
+  </script>
+
+
+</body></html>

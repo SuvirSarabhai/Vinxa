@@ -1,0 +1,220 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Expanded Floating Overlay</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-transparent font-body p-0 m-0">
+
+  <!-- Frameless Always-on-Top Floating Overlay (600x500) -->
+  <div id="overlay-shell" class="w-[600px] h-[500px] bg-surface/95 backdrop-blur-sm border-2 border-surface-mint rounded-lg shadow-[0_12px_32px_rgba(17,48,50,0.12)] flex flex-col overflow-hidden relative">
+    <!-- Draggable Header -->
+    <header class="px-md py-sm bg-surface-nav/90 border-b border-border-neutral flex items-center justify-between gap-sm cursor-grab active:cursor-grabbing select-none">
+      <div class="flex items-center gap-sm">
+        <span data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Vinxa</span>
+        <span class="px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal border border-primary/30 font-label text-label-sm">Demo</span>
+        <span id="overlay-status-badge" role="status" class="inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-recording-container text-on-recording-container">
+          <span id="overlay-status-dot" class="w-2 h-2 rounded-full bg-recording" aria-hidden="true"></span>
+          <span id="overlay-status-label" data-design-text-token="label-sm" class="font-label text-label-sm">Recording</span>
+        </span>
+        <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-heading-teal tabular-nums ml-xs">14:38</span>
+      </div>
+
+      <div class="flex items-center gap-xs cursor-default">
+        <button id="overlay-pause-btn" type="button" onclick="toggleOverlayPause()" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">pause</span>
+          <span id="overlay-pause-text">Pause</span>
+        </button>
+
+        <button type="button" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-recording-container text-on-recording-container hover:bg-recording hover:text-on-recording font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-recording">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">stop</span>
+          <span>Stop</span>
+        </button>
+
+        <button type="button" aria-label="Collapse overlay" title="Collapse overlay" class="inline-flex items-center justify-center w-8 h-8 rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">unfold_less</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Scrollable Transcript (acts as drag area) -->
+    <main class="flex-1 p-md overflow-y-auto flex flex-col gap-sm cursor-grab active:cursor-grabbing">
+      <div class="flex items-start gap-sm">
+        <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5 shrink-0">13:52</span>
+        <div>
+          <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal mr-xs">You:</span>
+          <span data-design-text-token="body-md" class="font-body text-body-md text-on-surface">Let&#39;s keep the always-on-top window compact so it never covers shared slides.</span>
+        </div>
+      </div>
+
+      <div class="flex items-start gap-sm">
+        <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary tabular-nums pt-0.5 shrink-0">14:06</span>
+        <div>
+          <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary mr-xs">Remote:</span>
+          <span data-design-text-token="body-md" class="font-body text-body-md text-on-surface">Makes sense. Having opacity control right in the footer is super helpful.</span>
+        </div>
+      </div>
+
+      <!-- Visible Pause-Gap Marker -->
+      <div class="my-xs flex items-center gap-sm">
+        <div class="flex-1 h-px bg-paused/40"></div>
+        <span data-design-text-token="label-sm" class="px-sm py-0.5 rounded-full bg-paused-container text-on-paused-container font-label text-label-sm">
+          Paused · 00:24 gap (14:12 – 14:36)
+        </span>
+        <div class="flex-1 h-px bg-paused/40"></div>
+      </div>
+
+      <!-- Partial Text (lighter, updates existing entry) -->
+      <div class="flex items-start gap-sm">
+        <span data-design-text-token="mono-sm" class="font-mono text-mono-sm text-text-secondary/75 tabular-nums pt-0.5 shrink-0">14:38</span>
+        <div>
+          <span data-design-text-token="label-sm" class="font-label text-label-sm text-heading-teal/80 mr-xs">You (partial):</span>
+          <span data-design-text-token="body-md" class="font-body text-body-md text-text-secondary/80 italic">Next we should verify the shortcut conflict check in Settings...</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Interactive Footer: Copy Recent Lines + Opacity Slider -->
+    <footer class="px-md py-sm bg-surface-nav/90 border-t border-border-neutral flex items-center justify-between gap-md cursor-default">
+      <button type="button" onclick="document.getElementById(&#39;overlay-copied&#39;).classList.remove(&#39;hidden&#39;)" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+        <span class="material-symbols-outlined text-[15px]" aria-hidden="true">content_copy</span>
+        <span>Copy recent lines</span>
+      </button>
+      <span id="overlay-copied" class="hidden font-label text-label-sm text-success">Copied</span>
+
+      <label class="flex items-center gap-sm">
+        <span data-design-text-token="label-sm" class="font-label text-label-sm text-text-secondary">Opacity</span>
+        <input type="range" min="55" max="100" value="95" oninput="document.getElementById(&#39;overlay-shell&#39;).style.opacity = this.value / 100" class="w-24 accent-primary cursor-pointer">
+      </label>
+    </footer>
+
+    <!-- Subtle Resize Handle Indicator -->
+    <div class="absolute bottom-1 right-1 w-3 h-3 pointer-events-none text-text-secondary/40 flex items-center justify-center">
+      <span class="material-symbols-outlined text-[12px]" aria-hidden="true">drag_handle</span>
+    </div>
+  </div>
+
+  <script>
+    let paused = false;
+    function toggleOverlayPause() {
+      paused = !paused;
+      const badge = document.getElementById('overlay-status-badge');
+      const dot = document.getElementById('overlay-status-dot');
+      const label = document.getElementById('overlay-status-label');
+      const btnText = document.getElementById('overlay-pause-text');
+      if (paused) {
+        badge.className = 'inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-paused-container text-on-paused-container';
+        dot.className = 'w-2 h-2 rounded-full bg-paused';
+        label.textContent = 'Paused';
+        btnText.textContent = 'Resume';
+      } else {
+        badge.className = 'inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-recording-container text-on-recording-container';
+        dot.className = 'w-2 h-2 rounded-full bg-recording';
+        label.textContent = 'Recording';
+        btnText.textContent = 'Pause';
+      }
+    }
+  </script>
+
+
+</body></html>

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { getAppSpeech, initializeAppSpeech } from './speech-service'
 import { FixturePlayer } from './fixture-player'
 import { installPhase2 } from './phase2'
@@ -8,6 +8,13 @@ import { fixtureCommandSchema } from '../shared/schemas'
 import { startCaptureTest } from './audio/capture-test'
 import type { CaptureTestMode } from './audio/capture-test'
 
+// UI smoke tests use an isolated profile so they cannot change real shortcuts
+// or consent receipts, or take over an already running development instance.
+if (!app.isPackaged && process.env.VINXA_SMOKE_USER_DATA) {
+  if (!isAbsolute(process.env.VINXA_SMOKE_USER_DATA)) throw new Error('Smoke profile must be an absolute path')
+  app.setPath('userData', process.env.VINXA_SMOKE_USER_DATA)
+}
+
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
 let isQuitting = false
@@ -15,7 +22,7 @@ let hideRequested = false
 let fixturePlayer: FixturePlayer | undefined
 let captureTest: Awaited<ReturnType<typeof startCaptureTest>>
 let removeNativeCloseHooks: (() => void) | undefined
-let disposePhase2: (() => void) | undefined
+let disposePhase2: (() => Promise<void>) | undefined
 const requestedCaptureMode = process.env.VINXA_CAPTURE_TEST
 const captureMode: CaptureTestMode | undefined = requestedCaptureMode === 'mic' || requestedCaptureMode === 'system' || requestedCaptureMode === 'both'
   ? requestedCaptureMode : undefined
@@ -64,6 +71,7 @@ function createMainWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    backgroundColor: '#F5F5F0',
     closable: true,
     webPreferences: {
       contextIsolation: true,
@@ -122,13 +130,14 @@ if (!hasLock) {
   app.on('before-quit', (event) => {
     if (isQuitting) return
     isQuitting = true
-    disposePhase2?.()
+    getAppSpeech()?.beginShutdown?.()
+    const phase2Cleanup = disposePhase2?.()
     removeNativeCloseHooks?.()
     fixturePlayer?.stop()
-    if (captureTest || getAppSpeech()) {
+    if (phase2Cleanup || captureTest || getAppSpeech()) {
       event.preventDefault()
       void (async () => {
-        try { await captureTest?.stop() }
+        try { await Promise.all([phase2Cleanup, captureTest?.stop()]) }
         finally { await getAppSpeech()?.shutdown() }
       })().catch(() => console.error('Local speech shutdown did not finish normally')).finally(() => app.quit())
     }
@@ -136,7 +145,9 @@ if (!hasLock) {
   app.whenReady().then(() => {
     createTray()
     createMainWindow()
-    if (mainWindow) void initializeAppSpeech(mainWindow)
+    if (mainWindow && (process.env.VINXA_BACKEND !== 'demo' || (captureMode && process.env.VINXA_CAPTURE_SPEECH === '1'))) {
+      void initializeAppSpeech(mainWindow)
+    }
     fixturePlayer = new FixturePlayer(
       (segment) => mainWindow?.webContents.send(ipcChannels.transcriptSegment, segment),
       (status) => mainWindow?.webContents.send(ipcChannels.fixtureStatus, status)

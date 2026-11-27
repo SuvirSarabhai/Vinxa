@@ -147,6 +147,57 @@ def test_silence_does_not_run_inference_or_emit_transcripts():
     asyncio.run(run())
 
 
+def test_first_partial_is_scheduled_early_without_increasing_sustained_cadence():
+    async def run():
+        events, engine = [], Engine()
+        async def emit(event):
+            events.append(event)
+        pipeline = StreamingPipeline(configuration(), emit, engine=engine, scorer_factory=EnergyScore)
+        try:
+            await pipeline.start()
+            await pipeline.anchor("mic", 0)
+            for _ in range(8):
+                await pipeline.ingest(frame("mic"))
+            await asyncio.wait_for(pipeline.idle.wait(), 2)
+            assert len(engine.calls) == 1
+            assert any(event["type"] == "partial" and event["text"] for event in events)
+            for _ in range(4):
+                await pipeline.ingest(frame("mic"))
+            await asyncio.wait_for(pipeline.idle.wait(), 2)
+            assert len(engine.calls) == 1
+        finally:
+            await pipeline.close()
+    asyncio.run(run())
+
+
+def test_forward_capture_gap_reports_loss_and_transcribes_from_the_new_anchor():
+    async def run():
+        events, engine = [], Engine()
+        async def emit(event):
+            events.append(event)
+        pipeline = StreamingPipeline(configuration(), emit, engine=engine, scorer_factory=EnergyScore)
+        try:
+            await pipeline.start()
+            await pipeline.anchor("mic", 0)
+            for _ in range(8):
+                await pipeline.ingest(frame("mic"))
+            await asyncio.wait_for(pipeline.idle.wait(), 2)
+            await pipeline.anchor("mic", 32000, dropped=19200, discontinuity=True)
+            after_gap = len(events)
+            for _ in range(8):
+                await pipeline.ingest(frame("mic"))
+            await pipeline.source_end("mic")
+            await pipeline.stop()
+            resumed = [event for event in events[after_gap:] if event["type"] in ("partial", "final") and event["text"]]
+            assert resumed and all(event["startMs"] >= 2000 for event in resumed)
+            assert any(event["type"] == "final" for event in resumed)
+            assert any(event.get("code") == "AUDIO_DROPPED" and event["recoverable"] for event in events)
+            assert not pipeline.failed
+        finally:
+            await pipeline.close()
+    asyncio.run(run())
+
+
 def test_pause_invalidates_inflight_results_and_resume_requires_anchor():
     async def run():
         events, engine = [], Engine()
@@ -171,6 +222,34 @@ def test_pause_invalidates_inflight_results_and_resume_requires_anchor():
             await pipeline.ingest(frame("mic"))
             await pipeline.source_end("mic")
             await pipeline.stop()
+        finally:
+            engine.release.set()
+            await pipeline.close()
+    asyncio.run(run())
+
+
+def test_pause_preserves_final_words_when_capture_explicitly_ended_all_sources():
+    async def run():
+        events, engine = [], Engine()
+        engine.release = threading.Event()
+        async def emit(event):
+            events.append(event)
+        pipeline = StreamingPipeline(configuration(), emit, engine=engine, scorer_factory=EnergyScore)
+        await pipeline.start()
+        try:
+            for source in ("mic", "system"):
+                await pipeline.anchor(source, 0)
+                for _ in range(12):
+                    await pipeline.ingest(frame(source))
+                await pipeline.source_end(source)
+            assert await asyncio.to_thread(engine.entered.wait, 1)
+            paused = asyncio.create_task(pipeline.pause())
+            await asyncio.sleep(0)
+            assert not paused.done()
+            engine.release.set()
+            await asyncio.wait_for(paused, 2)
+            assert {event["source"] for event in events if event["type"] == "final" and event["text"]} == {"mic", "system"}
+            assert pipeline.paused
         finally:
             engine.release.set()
             await pipeline.close()

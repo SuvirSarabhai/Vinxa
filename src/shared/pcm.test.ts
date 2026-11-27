@@ -20,6 +20,16 @@ function tone(rate: number, frequency: number): Float32Array {
 }
 
 describe('microphone PCM contract', () => {
+  it('emits native 16 kHz samples immediately without filtering or changing sample values', () => {
+    const frames: ArrayBuffer[] = []
+    const encoder = new PcmEncoder(16000, 0, (frame) => frames.push(frame))
+    const input = Float32Array.from({ length: 1600 }, (_, index) => index % 2 ? 0.25 : -0.5)
+    encoder.push([input])
+    expect(frames).toHaveLength(1)
+    const view = new DataView(frames[0])
+    expect(Array.from(input, (_, index) => view.getInt16(1 + index * 2, true))).toEqual(Array.from(input, floatToInt16))
+    expect(encoder.finish()).toBe(0)
+  })
   it('clips signed int16 values and rejects nonfinite samples', () => {
     expect([-2, -1, 0, 1, 2].map(floatToInt16)).toEqual([-32768, -32768, 0, 32767, 32767])
     expect(() => floatToInt16(NaN)).toThrow('finite')

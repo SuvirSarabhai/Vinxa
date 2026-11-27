@@ -19,6 +19,7 @@ type Manager = Pick<SidecarManager, 'start' | 'sendFrame' | 'sourceEnd' | 'pause
 /** An adapter to Developer A's owner. It never changes recording state or opens a device. */
 export class RecordingSpeechBridge {
   private session?: SidecarSession
+  private draining = false
   constructor(private readonly manager: Manager, private readonly owner: RecordingOwner) {}
   get active(): boolean { return this.session !== undefined }
 
@@ -28,6 +29,7 @@ export class RecordingSpeechBridge {
       throw new SidecarOperationError('Recording owner has not authorized speech startup')
     }
     this.session = session
+    this.draining = false
     try {
       await this.manager.start(session)
       if (!this.owner.hasConsent(session.sessionId) || !['awaiting-consent', 'recording'].includes(this.owner.getState())) {
@@ -39,7 +41,9 @@ export class RecordingSpeechBridge {
 
   frame(sessionId: string, source: AudioSourceName, pcm: Uint8Array, metadata?: AudioFrameMetadata): boolean {
     speechDiagnostics.record('bridge_received', source, pcm.byteLength / 2)
-    if (this.session?.sessionId !== sessionId || !this.owner.hasConsent(sessionId) || this.owner.getState() !== 'recording') {
+    const state = this.owner.getState()
+    if (this.session?.sessionId !== sessionId || !this.owner.hasConsent(sessionId) ||
+      (state !== 'recording' && !(state === 'stopping' && this.draining))) {
       speechDiagnostics.record('bridge_rejected_authorization', source, pcm.byteLength / 2)
       return false
     }
@@ -63,12 +67,20 @@ export class RecordingSpeechBridge {
   private requireSession(sessionId: string): void {
     if (this.session?.sessionId !== sessionId) throw new SidecarOperationError('Inactive recording session')
   }
+  beginDrain(sessionId: string): void {
+    this.requireSession(sessionId)
+    if (!this.owner.hasConsent(sessionId) || !['recording', 'stopping'].includes(this.owner.getState())) {
+      throw new SidecarOperationError('Recording owner has not authorized final audio draining')
+    }
+    this.draining = true
+  }
   async pause(sessionId: string): Promise<void> {
     this.requireSession(sessionId)
     if (!this.owner.hasConsent(sessionId) || !['recording', 'paused'].includes(this.owner.getState())) {
       throw new SidecarOperationError('Recording owner has not authorized pause')
     }
     await this.manager.pause()
+    this.draining = false
   }
   async resume(sessionId: string): Promise<void> {
     this.requireSession(sessionId)
@@ -84,8 +96,8 @@ export class RecordingSpeechBridge {
   async stop(sessionId?: string): Promise<void> {
     if (sessionId) this.requireSession(sessionId)
     if (!this.session) return
-    await this.manager.stop()
-    this.session = undefined
+    try { await this.manager.stop() }
+    finally { this.session = undefined; this.draining = false }
   }
 }
 

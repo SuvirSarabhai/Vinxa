@@ -46,3 +46,16 @@ def test_streaming_retains_original_encoder_context_and_sanitizes_errors(tmp_pat
 def test_invalid_samples_rejected_without_loading(audio):
     with pytest.raises(SpeechEngineError):
         SpeechEngine().transcribe_samples(audio)
+
+
+def test_live_right_edge_rounding_retains_observed_word_but_rejects_far_future(tmp_path):
+    engine = SpeechEngine(cache_dir=tmp_path / "cache")
+    model = Mock()
+    words = [SimpleNamespace(word=" edge", start=0.4, end=0.65),
+             SimpleNamespace(word=" future", start=0.5, end=1.2)]
+    segment = SimpleNamespace(text="edge future", words=words)
+    model.transcribe.return_value = (iter([segment]), SimpleNamespace())
+    engine._model = model
+    result = engine.transcribe_samples(np.ones(9600, dtype=np.float32) * 0.1, offset=32000)
+    assert [(word.text, word.start, word.end) for word in result.words] == [(" edge", 38400, 41600)]
+    assert result.words_outside_window == 1

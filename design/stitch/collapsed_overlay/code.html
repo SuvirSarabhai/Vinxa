@@ -1,0 +1,170 @@
+<!DOCTYPE html><html lang="en"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vinxa — Collapsed Overlay</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">/** @type {import('tailwindcss').Config} */
+globalThis.tailwind = globalThis.tailwind || {};
+globalThis.tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        'primary': '#07D2E0',
+        'on-primary': '#113032',
+        'primary-hover': '#06BAC7',
+        'primary-container': '#DFF6EE',
+        'on-primary-container': '#113032',
+        'secondary': '#113032',
+        'on-secondary': '#FFFFFF',
+        'background': '#F5F5F0',
+        'on-background': '#1C3B3D',
+        'surface': '#FFFFFF',
+        'on-surface': '#1C3B3D',
+        'surface-nav': '#F0FAF7',
+        'surface-mint': '#DFF6EE',
+        'surface-subtle': '#F5F5F0',
+        'heading-teal': '#113032',
+        'text-secondary': '#4A7275',
+        'border-neutral': '#E8E8E4',
+        'outline': '#4A7275',
+        'outline-variant': '#E8E8E4',
+        'recording': '#DC2626',
+        'on-recording': '#FFFFFF',
+        'recording-container': '#FEE2E2',
+        'on-recording-container': '#991B1B',
+        'paused': '#D97706',
+        'on-paused': '#2A2A2A',
+        'paused-container': '#FEF3C7',
+        'on-paused-container': '#92400E',
+        'error': '#DC2626',
+        'on-error': '#FFFFFF',
+        'error-container': '#FEE2E2',
+        'on-error-container': '#991B1B',
+        'success': '#0D9488',
+        'on-success': '#1D1D1D',
+      },
+      borderRadius: {
+        'xs': '4px',
+        'sm': '8px',
+        'DEFAULT': '12px',
+        'md': '12px',
+        'lg': '16px',
+        'full': '9999px',
+      },
+      spacing: {
+        'xs': '4px',
+        'sm': '8px',
+        'md': '16px',
+        'lg': '24px',
+        'xl': '32px',
+        '2xl': '48px',
+      },
+      fontFamily: {
+        'headline': ['"Inter"', 'sans-serif'],
+        'title': ['"Inter"', 'sans-serif'],
+        'body': ['"Inter"', 'sans-serif'],
+        'label': ['"Inter"', 'sans-serif'],
+        'mono': ['"JetBrains Mono"', 'monospace'],
+      },
+      fontSize: {
+        'headline-lg': ['24px', { lineHeight: '32px', letterSpacing: '-0.3px', fontWeight: '700' }],
+        'headline-md': ['18px', { lineHeight: '24px', letterSpacing: '-0.2px', fontWeight: '700' }],
+        'headline-sm': ['16px', { lineHeight: '22px', letterSpacing: '-0.1px', fontWeight: '700' }],
+        'title-md': ['15px', { lineHeight: '22px', letterSpacing: '0px', fontWeight: '600' }],
+        'body-lg': ['15px', { lineHeight: '24px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-md': ['14px', { lineHeight: '21px', letterSpacing: '0px', fontWeight: '400' }],
+        'body-sm': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '400' }],
+        'label-lg': ['14px', { lineHeight: '20px', letterSpacing: '0px', fontWeight: '600' }],
+        'label-md': ['13px', { lineHeight: '18px', letterSpacing: '0px', fontWeight: '500' }],
+        'label-sm': ['12px', { lineHeight: '16px', letterSpacing: '0.1px', fontWeight: '500' }],
+        'mono-sm': ['12px', { lineHeight: '16px', letterSpacing: '0px', fontWeight: '500' }],
+      },
+      transitionDuration: {
+        'state-change': '120ms',
+        'surface-enter': '200ms',
+        'surface-exit': '150ms',
+      },
+      transitionDelay: {
+        'state-change': '0ms',
+        'surface-enter': '0ms',
+        'surface-exit': '0ms',
+      },
+      transitionTimingFunction: {
+        'state-change': 'ease-out',
+        'surface-enter': 'cubic-bezier(0.2, 0, 0, 1)',
+        'surface-exit': 'cubic-bezier(0.3, 0, 1, 1)',
+      },
+    },
+  },
+};
+if (typeof module !== 'undefined') module.exports = globalThis.tailwind.config;
+</script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet">
+  <style>.material-symbols-outlined, .material-symbols-rounded, .material-symbols-sharp, .material-icons { display: inline-block; width: 1em; height: 1em; line-height: 1 !important; box-sizing: content-box; overflow: hidden; white-space: nowrap; direction: ltr; vertical-align: middle; }</style>
+</head>
+<body class="bg-transparent font-body p-0 m-0">
+
+  <!-- Collapsed Floating Overlay (600x130) -->
+  <div class="w-[600px] h-[130px] bg-surface/95 backdrop-blur-sm border-2 border-surface-mint rounded-lg shadow-[0_10px_28px_rgba(17,48,50,0.12)] px-lg py-md flex flex-col justify-between">
+    <div class="flex items-center justify-between gap-md">
+      <div class="flex items-center gap-sm">
+        <span data-design-text-token="headline-sm" class="font-headline text-headline-sm text-heading-teal">Vinxa</span>
+        <span class="px-sm py-0.5 rounded-full bg-surface-mint text-heading-teal border border-primary/30 font-label text-label-sm">Demo</span>
+        <span id="collapsed-status-badge" role="status" class="inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-recording-container text-on-recording-container">
+          <span id="collapsed-status-dot" class="w-2 h-2 rounded-full bg-recording" aria-hidden="true"></span>
+          <span id="collapsed-status-label" data-design-text-token="label-sm" class="font-label text-label-sm">Recording</span>
+        </span>
+      </div>
+      <span data-design-text-token="headline-sm" class="font-mono text-headline-sm text-heading-teal tabular-nums">14:38</span>
+    </div>
+
+    <div class="flex items-center justify-between gap-sm">
+      <span data-design-text-token="body-sm" class="font-body text-body-sm text-text-secondary">
+        Product Architecture Sync · Local capture (Demo)
+      </span>
+
+      <div class="flex items-center gap-xs">
+        <button type="button" onclick="toggleCollapsedPause()" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-surface border border-border-neutral text-heading-teal hover:bg-surface-mint font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">pause</span>
+          <span id="collapsed-pause-text">Pause</span>
+        </button>
+
+        <button type="button" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-recording-container text-on-recording-container hover:bg-recording hover:text-on-recording font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-recording">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">stop</span>
+          <span>Stop</span>
+        </button>
+
+        <button type="button" class="inline-flex items-center gap-xs px-sm py-xs rounded-sm bg-primary text-on-primary hover:bg-primary-hover font-label text-label-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-secondary">
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">unfold_more</span>
+          <span>Expand</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let paused = false;
+    function toggleCollapsedPause() {
+      paused = !paused;
+      const badge = document.getElementById('collapsed-status-badge');
+      const dot = document.getElementById('collapsed-status-dot');
+      const label = document.getElementById('collapsed-status-label');
+      const btnText = document.getElementById('collapsed-pause-text');
+      if (paused) {
+        badge.className = 'inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-paused-container text-on-paused-container';
+        dot.className = 'w-2 h-2 rounded-full bg-paused';
+        label.textContent = 'Paused';
+        btnText.textContent = 'Resume';
+      } else {
+        badge.className = 'inline-flex items-center gap-xs px-sm py-0.5 rounded-full bg-recording-container text-on-recording-container';
+        dot.className = 'w-2 h-2 rounded-full bg-recording';
+        label.textContent = 'Recording';
+        btnText.textContent = 'Pause';
+      }
+    }
+  </script>
+
+
+</body></html>

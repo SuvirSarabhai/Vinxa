@@ -6,13 +6,22 @@ The product is built for a short hackathon sprint. The first objective is a reli
 
 ## Product principles
 
-Current implementation: Developer A's Phase 2 code adds the consent/setup window,
-global hotkeys, recording state controller, and floating transcript overlay using
-a clearly labelled demo backend. Developer B's separate real-audio WAV diagnostics
-and offline WAV transcription engine are also available. The live audio-to-overlay
-connection, saved meeting history, and AI notes are not connected yet. See
-[Phase 2 files and testing guide](docs/phase-2.md).
+Current implementation: Developer A's consent/setup, global hotkeys, controller,
+and draggable overlay are connected to Developer B's Phase 2 local speech service.
+Normal launch uses live microphone/system transcription after consent. Set
+VINXA_BACKEND=demo explicitly for written fixtures and no audio capture.
+The Stitch frontend is now integrated and has been built and tested, including
+the real speech pipeline with synthetic microphone input. Saved history and AI
+notes remain later-phase work. See [frontend assessment and verification](docs/stitch-frontend-integration.md),
+[local integration setup and checks](docs/phase2-local-integration.md) and
+[Developer A's interface guide](docs/phase-2.md).
 The native main-window X-button issue remains parked; use the tray's Quit action.
+
+The original seven-screen Stitch export is preserved in `design/stitch/`.
+The active UI uses React, local CSS, bundled Inter/JetBrains Mono fonts and local
+SVG icons, with live recording state throughout. Use `pnpm smoke:ui` after
+`pnpm build` to repeat the desktop UI checks; `pnpm smoke:ui:live` additionally
+uses synthetic speech with the real cached local model.
 
 - **Local-only by default.** Audio, transcripts, and search stay on the laptop. Cloud notes are an explicit opt-in and receive transcript text, never audio.
 - **Two separate audio streams.** Microphone is labelled **You** and WASAPI loopback is labelled **Remote**. Echo deduplication is planned for Phase 3.
@@ -41,9 +50,8 @@ React overlay and library
 live transcript, search, insights, consent, settings
 ```
 
-This is the target architecture. The merged code currently has separate audio
-WAV diagnostics, an offline WAV speech engine, and the Phase 2 demo UI. The live
-localhost streaming connection is not implemented yet.
+The capture-to-overlay path is connected. SQLite, raw-audio spooling, saved
+history, search, notes, and export in this target diagram remain later work.
 
 ## Technology stack
 
@@ -90,32 +98,39 @@ docs/          PRD, architecture, privacy, and test-result documentation.
 
 ## Local setup
 
-Developer A's current demo work needs Node.js and pnpm only. The Python setup below
-is needed when running Developer B's offline speech engine or harness. Real-audio
-diagnostics are opt-in and separate from the default Phase 2 demo UI.
+Live mode needs the Phase 2 Python dependencies and a cached speech model outside
+the repository. Reuse your existing virtual environment. Model preparation can
+download files; normal inference uses cached files only.
 
 ```powershell
 pnpm install
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-Copy-Item .env.example .env
+if (!(Test-Path .venv\Scripts\python.exe)) { py -3.11 -m venv .venv }
+.\.venv\Scripts\python.exe -m pip install -r sidecar/requirements-phase2.txt
+.\.venv\Scripts\python.exe -c "from sidecar.engine import SpeechEngine; SpeechEngine('base.en').load()"
+Remove-Item Env:VINXA_CAPTURE_TEST -ErrorAction SilentlyContinue
+$env:VINXA_BACKEND = 'local'
 pnpm dev
 ```
 
-For the current desktop shell, run `pnpm install` and `pnpm dev`. Start demo opens
-setup and requires explicit consent before replaying written transcript fixtures.
-The floating overlay supports pause/resume/stop, collapse, opacity, and copying
-recent lines. Open Library restores the main window and Quit exits. Global hotkeys
-default to Ctrl+Alt+S, Ctrl+Alt+P, and Ctrl+Alt+X and can be changed in Settings.
-`pnpm dev` starts Electron only, without a Python sidecar. Audio meters intentionally
-remain unavailable in demo mode.
+Wait for the engine-ready message, then Start and confirm consent. The selected
+microphone and Windows default-output audio appear as You and Remote. Pause
+releases capture devices and flushes final words; Resume acquires fresh tracks.
+Stop retains the current transcript on screen. The overlay supports dragging,
+resize, collapse, opacity, and copying recent lines. Hotkeys default to
+Ctrl+Alt+S, Ctrl+Alt+P, and Ctrl+Alt+X.
+
+For UI-only fixtures, set `$env:VINXA_BACKEND='demo'` before `pnpm dev`. Demo mode
+does not start Python, capture audio, or invent meter readings. Set runtime
+options in the launching PowerShell session; `.env.example` is a template.
 
 Use `pnpm icons` to regenerate the temporary application/tray icon. `pnpm package:win`
 builds an unsigned NSIS installer and portable executable under `release/`.
-After rebuilding, the package contains the Phase 2 demo shell; sidecar/model packaging will be
-added when Developer B supplies those artifacts. See [Phase 1 contracts](docs/phase-1-contracts.md)
-for the integration proposal and completion checks.
+Windows packaging now freezes the Python runtime and copies the selected cached
+model into the installer resources. Install sidecar/requirements-package.txt
+before pnpm package:win. No packaging build has been run for these changes.
+See the [Phase 2 completion checks](docs/phase2-completion-checklist.md) for the
+packaged speech smoke and real-call acceptance steps. The separate shell smoke
+explicitly selects demo mode and does not validate real speech.
 
 Developer B's microphone diagnostic is opt-in. Set `$env:VINXA_CAPTURE_TEST='mic'`
 before `pnpm dev`, then confirm the native recording prompt. It saves
@@ -123,7 +138,7 @@ before `pnpm dev`, then confirm the native recording prompt. It saves
 Run `node scripts/validate-wav.mjs test_recordings/mic.wav` to check the result.
 See [microphone capture status and test steps](docs/phase1-audio-capture.md).
 Diagnostic mode opens a dedicated screen and does not enable the demo controls
-or global hotkeys. Clear `VINXA_CAPTURE_TEST` before returning to the normal demo.
+or global hotkeys. Clear `VINXA_CAPTURE_TEST` before returning to normal live/demo sessions.
 
 For the Python Phase 1 environment and offline benchmark commands, follow
 [Developer B setup](README-developer-b.md). The measured English baseline is
@@ -152,11 +167,13 @@ and use headphones for the simultaneous test. No video is saved.
 
 ## Privacy and data handling
 
-The normal UI replays written fixtures without capturing audio or starting Python.
-Consent receipts and hotkey settings are stored in Electron's user-data directory.
-The opt-in Phase 1 diagnostics save WAV files separately, and the offline WAV
-engine can transcribe those files. Live transcription, persistent meeting history,
-the network guard, deletion, and optional cloud notes remain later work.
+Live audio is processed by the authenticated local speech service after consent.
+This path saves no raw WAV files or permanent transcript history. Consent receipts
+and hotkey settings are stored in Electron's user-data directory. Optional bounded
+diagnostics contain numeric timing/accounting data, not speech text or audio.
+Meeting-app mute does not mute Vinxa's microphone. The opt-in Phase 1 diagnostics
+still save WAV files separately. Persistent history, echo deduplication, the
+broader network guard, deletion, and optional cloud notes remain later work.
 
 ## Delivery order
 

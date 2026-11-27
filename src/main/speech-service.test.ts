@@ -58,3 +58,62 @@ it('reports initialization failure safely and makes status available to late sub
   expect(status.status).toBe('error')
   expect(() => fake.handlers.get(ipcChannels.engineStatusGet)({ senderFrame: {} })).toThrow()
 })
+
+it('replays engine status to main-process subscribers and removes their subscriptions', async () => {
+  const { SpeechService } = await import('./speech-service')
+  const window = { isDestroyed: () => false, webContents: { send: vi.fn(), mainFrame: {} } } as any
+  const service = new SpeechService({ command: 'test', args: [] }, window)
+  const manager = fake.managers[0]
+  const status = { type: 'status', sessionId: randomUUID(), generation: 0, status: 'ready' }
+  manager.options.onStatus(status)
+  const listener = vi.fn()
+  const unsubscribe = service.subscribe(listener)
+  expect(listener).toHaveBeenCalledExactlyOnceWith(status)
+  manager.options.onError({ type: 'error', sessionId: status.sessionId, generation: 0,
+    code: 'AUDIO_DROPPED', message: 'Dropped samples', recoverable: true })
+  expect(listener).toHaveBeenCalledTimes(2)
+  unsubscribe()
+  manager.options.onStatus(status)
+  expect(listener).toHaveBeenCalledTimes(2)
+})
+
+it('reaps a failed session, reloads the engine, and allows the next recording owner', async () => {
+  const { SpeechService } = await import('./speech-service')
+  const window = { isDestroyed: () => false, webContents: { send: vi.fn(), mainFrame: {} } } as any
+  const service = new SpeechService({ command: 'test', args: [] }, window)
+  await service.initialize()
+  const manager = fake.managers[0]
+  const owner = { getState: () => 'recording' as const, hasConsent: () => true }
+  const session = { sessionId: randomUUID(), meetingId: 'failed', model: 'base.en', language: 'en', enabledSources: ['mic'] as 'mic'[] }
+  const bridge = service.createBridge(owner)
+  await bridge.start(session)
+  manager.endSession.mockRejectedValueOnce(new Error('Session transport failed'))
+  let releaseChild!: () => void
+  manager.stop.mockReturnValueOnce(new Promise<void>((resolve) => { releaseChild = resolve }))
+  const ending = expect(bridge.stop()).rejects.toThrow('could not finish completely')
+  await vi.waitFor(() => expect(manager.stop).toHaveBeenCalledOnce())
+  expect(manager.prewarm).toHaveBeenCalledOnce()
+  releaseChild()
+  await ending
+  expect(bridge.active).toBe(false)
+  expect(manager.prewarm).toHaveBeenCalledTimes(2)
+  const next = service.createBridge(owner)
+  await next.start({ ...session, sessionId: randomUUID(), meetingId: 'next' })
+  await next.stop()
+  expect(manager.start).toHaveBeenCalledTimes(2)
+})
+
+it('does not reload the model when an ending session fails during app exit', async () => {
+  const { SpeechService } = await import('./speech-service')
+  const window = { isDestroyed: () => false, webContents: { send: vi.fn(), mainFrame: {} } } as any
+  const service = new SpeechService({ command: 'test', args: [] }, window)
+  await service.initialize()
+  const manager = fake.managers[0]
+  const bridge = service.createBridge({ getState: () => 'recording', hasConsent: () => true })
+  await bridge.start({ sessionId: randomUUID(), meetingId: 'quit', model: 'base.en', language: 'en', enabledSources: ['mic'] })
+  manager.endSession.mockRejectedValueOnce(new Error('Interrupted'))
+  service.beginShutdown()
+  await expect(bridge.stop()).rejects.toThrow('could not finish completely')
+  expect(manager.prewarm).toHaveBeenCalledOnce()
+  expect(bridge.active).toBe(false)
+})
