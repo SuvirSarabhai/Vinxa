@@ -196,6 +196,24 @@ def test_model_errors_and_warmup_failures_are_safe_and_never_ready():
     asyncio.run(run())
 
 
+def test_lost_audio_intervals_are_not_counted_twice():
+    async def run():
+        events = []
+        async def emit(event):
+            events.append(event)
+        pipeline = StreamingPipeline(configuration(), emit, engine=Engine(), scorer_factory=EnergyScore)
+        try:
+            await pipeline.start()
+            state = pipeline.sources["mic"]
+            await pipeline._loss(state, 0, 1600, "scripted crop")
+            await pipeline._loss(state, 0, 1600, "same samples evicted later")
+            await pipeline._loss(state, 0, 3200, "next lost interval")
+            assert sum(e.get("metrics", {}).get("droppedSamples", 0) for e in events) == 3200
+        finally:
+            await pipeline.close()
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("kwargs", [dict(window_seconds=0), dict(buffer_seconds=100), dict(queue_per_source=0)])
 def test_settings_bounds(kwargs):
     with pytest.raises(ValueError):

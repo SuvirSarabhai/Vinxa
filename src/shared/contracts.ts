@@ -3,7 +3,7 @@ import type {
   audioSourceSchema, fixtureCommandSchema, fixtureStatusSchema, meetingInsightsSchema,
   recordingConfigSchema, recordingStateSchema, sidecarConfigSchema, sidecarEventSchema,
   transcriptSegmentSchema, audioFrameMetadataSchema, sidecarStatusSchema, sidecarErrorSchema,
-  sidecarControlSchema, sidecarListeningSchema
+  sidecarControlSchema, sidecarListeningSchema, captureFrameDiagnosticsSchema
 } from './schemas'
 
 export type AudioSourceName = z.infer<typeof audioSourceSchema>
@@ -43,9 +43,12 @@ export interface DesktopApi {
 
 export const sourceIds = { mic: 0, system: 1 } as const
 
+export type CaptureFrameDiagnostics = z.infer<typeof captureFrameDiagnosticsSchema>
+
 export interface CaptureBridge {
+  clockSync?(clientSendMs: number): Promise<{ mainReceiveMs: number; mainSendMs: number; sessionStartMs: number }>
   ready(): Promise<void>
-  frame(frame: ArrayBuffer, metadata?: AudioFrameMetadata): Promise<void>
+  frame(frame: ArrayBuffer, metadata?: AudioFrameMetadata, diagnostics?: CaptureFrameDiagnostics): Promise<void>
   finished(result: { error: string | null; paddedSamples: number }): Promise<void>
   onStop(listener: () => void): () => void
 }

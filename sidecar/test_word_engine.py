@@ -18,11 +18,28 @@ def test_word_inference_model_reuse_quality_filters_and_warmup(tmp_path, monkeyp
     result = engine.transcribe_samples(np.ones(16000, np.float32) * 0.1, offset=16000)
     assert result.words[0].start == 17600 and result.words[0].end == 19200
     segment.no_speech_prob = 0.99
+    segment.avg_logprob = -1.1
     assert not engine.transcribe_samples(np.zeros(16000)).words
     engine.warmup()
     assert constructor.call_count == 1
     assert backend.transcribe.call_args.kwargs["condition_on_previous_text"] is False
     assert backend.transcribe.call_args.kwargs["word_timestamps"] is True
+
+
+def test_streaming_retains_original_encoder_context_and_sanitizes_errors(tmp_path):
+    engine = SpeechEngine(cache_dir=tmp_path / "cache")
+    model = Mock()
+    original = model.encode
+    model.transcribe.return_value = (iter([]), SimpleNamespace())
+    engine._model = model
+    engine.transcribe_samples(np.zeros(16000))
+    assert model.encode is original
+    assert "chunk_length" not in model.transcribe.call_args.kwargs
+    assert "without_timestamps" not in model.transcribe.call_args.kwargs
+    model.transcribe.side_effect = RuntimeError("private-native-marker")
+    with pytest.raises(SpeechEngineError, match="Local word inference failed"):
+        engine.transcribe_samples(np.zeros(16000))
+    assert model.encode is original
 
 
 @pytest.mark.parametrize("audio", [np.empty(0), np.ones((2, 100)), np.array([np.nan]), np.array([2.0])])

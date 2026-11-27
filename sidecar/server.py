@@ -8,10 +8,11 @@ import os
 import re
 import signal
 import sys
-from time import monotonic
+from time import perf_counter as monotonic
 
 _STARTUP_ERROR = "Sidecar startup or transport failed; verify local runtime configuration.\n"
 try:
+    from .diagnostics import Diagnostics
     from websockets.asyncio.server import serve
     from websockets.exceptions import ConnectionClosed
 
@@ -44,6 +45,7 @@ class SidecarServer:
         self._token = token
         self.session_id, self.generation = session_id, generation
         self.auth_timeout, self.admission_seconds, self.clock = auth_timeout, admission_seconds, clock
+        self.diagnostics = Diagnostics()
         self.session = None
         self._owner = None
         self._consumed = False
@@ -56,6 +58,11 @@ class SidecarServer:
             pipeline_factory = StreamingPipeline
         self.pipeline_factory = pipeline_factory
         self.pipeline = self._boot = None
+        self.config = None
+        self.retained_engine = None
+        self.keep_alive = self.standby = False
+        self.clock_offset = None
+        self.clock_uncertainty = 0
 
     @property
     def port(self):
@@ -102,6 +109,17 @@ class SidecarServer:
             else:
                 await self.pipeline.close()
 
+    def _make_pipeline(self, config, emit):
+        if self.retained_engine is None:
+            return self.pipeline_factory(config, emit)
+        from .streaming import StreamingPipeline
+        if self.pipeline_factory is StreamingPipeline:
+            return StreamingPipeline(config, emit, engine=self.retained_engine, prewarmed=True)
+        pipeline = self.pipeline_factory(config, emit)
+        pipeline.engine = self.retained_engine
+        pipeline.prewarmed = True
+        return pipeline
+
     async def _handle(self, socket):
         if self._active >= 4:
             await socket.close(1008, "Connection limit")
@@ -122,39 +140,107 @@ class SidecarServer:
                 raise ProtocolError("AUTH_FAILED", "Session authentication failed")
             if (config["sessionId"], config["generation"]) != (self.session_id, self.generation):
                 raise ProtocolError("AUTH_FAILED", "Session authentication failed")
-            if config["model"] not in ("base.en", "small"):
+            if config["model"] not in ("base.en", "small", "tiny.en"):
                 raise ProtocolError("UNSUPPORTED_MODEL", "Requested model is not supported")
             # No awaits between ownership checks and claim: concurrent clients cannot both win.
             self._consumed, self._owner, owns = True, socket, True
+            self.config = dict(config)
+            self.keep_alive = config.get("keepAlive", False)
+            self.standby = config.get("standby", False)
             self.session = Session.from_config(config)
             await socket.send(encode_event(self.session.status_event()))
             if self.pipeline_factory is not None:
                 async def emit(event):
                     if self.session.closed:
-                        return
+                        raise ConnectionError("Local session closed")
                     if event["type"] == "status":
                         self.session.status = event["status"]
-                    await asyncio.wait_for(socket.send(encode_event(event)), 2)
+                    try:
+                        await asyncio.wait_for(socket.send(encode_event(event)), 2)
+                    except Exception:
+                        await socket.close(1011, "Local event delivery failed")
+                        raise
                     if event["type"] == "status" and event["status"] == "error":
                         asyncio.create_task(socket.close(1011, "Engine unavailable"))
-                self.pipeline = self.pipeline_factory(config, emit)
+                self.pipeline = self._make_pipeline(config, emit)
+                self.pipeline.diagnostics = self.diagnostics
                 self._boot = asyncio.create_task(self.pipeline.start())
             async for message in socket:
                 if isinstance(message, bytes):
-                    frame = parse_frame(message, self.session.enabled_sources)
-                    if self.pipeline is None or not self.pipeline.ready or self.pipeline.paused:
+                    identity = message[3:4] if config["protocolVersion"] == 2 else message[:1]
+                    source = "mic" if identity == b"\x00" else "system" if identity == b"\x01" else None
+                    pcm_samples = max(0, (len(message) - (48 if config["protocolVersion"] == 2 else 1)) // 2)
+                    if source:
+                        self.diagnostics.record("server_received", source, pcm_samples)
+                    try:
+                        frame = parse_frame(message, self.session.enabled_sources, config["protocolVersion"])
+                    except ProtocolError:
+                        if source:
+                            self.diagnostics.record("frame_rejected_validation", source, pcm_samples)
+                        raise
+                    self.diagnostics.record("frame_validated", frame.source, len(frame.pcm) // 2)
+                    if frame.metadata is not None:
+                        if self.clock_offset is None:
+                            raise ProtocolError("CLOCK_UNAVAILABLE", "Establish source clock translation before timed audio")
+                        frame.metadata["captureTimeMs"] += self.clock_offset
+                        frame.metadata["sentMs"] += self.clock_offset
+                        frame.metadata["captureErrorMs"] += self.clock_uncertainty
+                        frame.metadata["serverReceiveMs"] = monotonic() * 1000
+                    if self.standby or self.pipeline is None or not self.pipeline.ready or self.pipeline.paused:
+                        self.diagnostics.record("ingest_rejected_state", frame.source, len(frame.pcm) // 2)
                         await self._error(socket, "NOT_READY", "Transcription pipeline is not available",
                                           recoverable=True, authenticated=True)
                     else:
                         try:
                             await self.pipeline.ingest(frame)
                         except ProtocolError as error:
+                            self.diagnostics.record("ingest_rejected_control", frame.source, len(frame.pcm) // 2)
                             if not error.recoverable:
                                 raise
                             await self._error(socket, error.code, str(error), True, True)
                     continue
                 control = parse_json(message, "control")
                 self.session.accept_control(control)
+                if control["type"] == "clock-sync":
+                    received = monotonic() * 1000
+                    event = self.session.status_event(control["requestId"])
+                    event["clock"] = {"clientSendMs": control["clientSendMs"], "serverReceiveMs": received,
+                                      "serverSendMs": monotonic() * 1000}
+                    await socket.send(encode_event(event))
+                    continue
+                if control["type"] == "clock-set":
+                    self.clock_offset, self.clock_uncertainty = control["offsetMs"], control["uncertaintyMs"]
+                    await socket.send(encode_event(self.session.status_event(control["requestId"])))
+                    continue
+                if control["type"] == "session-end":
+                    if not self.keep_alive:
+                        raise ProtocolError("INVALID_CONTROL", "Persistent session lifecycle was not negotiated")
+                    await self._close_pipeline(flush=True)
+                    self.retained_engine = self.pipeline.engine
+                    self.standby = True
+                    self.session.status = "standby"
+                    await socket.send(encode_event(self.session.status_event(control["requestId"])))
+                    continue
+                if control["type"] == "session-begin":
+                    if not self.keep_alive or not self.standby:
+                        raise ProtocolError("INVALID_CONTROL", "End the prior session before beginning another")
+                    if control["nextSessionId"] == self.session.session_id:
+                        raise ProtocolError("INVALID_CONTROL", "A fresh session identity is required")
+                    if self.pipeline is None or self.pipeline.failed or (not self.pipeline.ready and self.retained_engine is None):
+                        raise ProtocolError("NOT_READY", "Wait for initial model readiness")
+                    await self._close_pipeline()
+                    self.retained_engine = self.pipeline.engine
+                    config = {**self.config, "sessionId": control["nextSessionId"], "language": control["language"],
+                              "enabledSources": control["enabledSources"], "standby": False}
+                    self.config = config
+                    self.session_id = config["sessionId"]
+                    self.session = Session.from_config(config)
+                    self.standby = False
+                    self.pipeline = self._make_pipeline(config, emit)
+                    self.pipeline.diagnostics = self.diagnostics
+                    await self.pipeline.start()
+                    await socket.send(encode_event(self.session.status_event(control["requestId"])))
+                    continue
                 if control["type"] == "stop":
                     await self._close_pipeline(flush=True)
                     self.session.close()
@@ -207,8 +293,11 @@ class SidecarServer:
                 self.session.close()
                 self._owner = None
                 self._token = ""
-                await self._close_pipeline()
-                self.finished.set()
+                try:
+                    await self._close_pipeline()
+                finally:
+                    self.diagnostics.save()
+                    self.finished.set()
 
 
 async def run_from_environment():

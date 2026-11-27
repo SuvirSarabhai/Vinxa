@@ -38,3 +38,22 @@ def test_large_timestamp_shift_is_not_agreement():
     agreement = LocalAgreement()
     agreement.update([Word("hello", 0, 1600)])
     assert agreement.update([Word("hello", 10000, 12000)])[0] == []
+
+
+def test_timestamp_drift_across_commit_boundary_preserves_new_word_without_retiming():
+    agreement = LocalAgreement()
+    agreement.update([Word("hello", 0, 1600), Word("world", 1600, 3200)])
+    stable, _ = agreement.update([Word("hello", 0, 1600), Word("world", 1500, 3200)])
+    assert [word.text for word in stable] == ["hello", "world"]
+    assert stable[-1].start == 1500  # original alignment retained, not adjusted
+    assert agreement.update([Word("hello", 0, 1700), Word("world", 1500, 3300)]) == ([], [])
+
+
+def test_repeated_pending_word_is_not_mistaken_for_overlap_duplicate():
+    agreement = LocalAgreement()
+    agreement.update([Word("yes", 0, 1600), Word("yes", 1600, 3200)])
+    stable, _ = agreement.update([Word("yes", 0, 1600), Word("maybe", 1600, 3200)])
+    assert len(stable) == 1
+    agreement.update([Word("yes", 1500, 3200)])
+    stable, _ = agreement.update([Word("yes", 1550, 3200)])
+    assert [word.text for word in stable] == ["yes"]

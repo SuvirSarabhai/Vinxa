@@ -5,9 +5,9 @@ export const ipcChannels = {
   meetingsDelete: 'meetings:delete', meetingsExport: 'meetings:export', meetingsRename: 'meetings:rename',
   speakerRename: 'speaker:rename', settingsGet: 'settings:get', settingsSet: 'settings:set',
   recordingState: 'event:recording-state', transcriptSegment: 'event:transcript-segment',
-  audioLevel: 'event:audio-level', engineStatus: 'event:engine-status',
+  engineStatusGet: 'engine:status', audioLevel: 'event:audio-level', engineStatus: 'event:engine-status',
   insightsReady: 'event:insights-ready', errorRaised: 'event:error',
   fixtureCommand: 'fixture:command', fixtureStatus: 'fixture:status',
-  captureReady: 'capture:ready', captureFrame: 'capture:frame',
+  captureClock: 'capture:clock', captureReady: 'capture:ready', captureFrame: 'capture:frame',
   captureFinished: 'capture:finished', captureStop: 'capture:stop'
 } as const

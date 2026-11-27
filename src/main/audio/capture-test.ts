@@ -5,8 +5,12 @@ import { join, resolve } from 'node:path'
 import type { AudioSourceName } from '../../shared/contracts'
 import { sourceIds } from '../../shared/contracts'
 import { ipcChannels } from '../../shared/ipc-channels'
-import { audioFrameMetadataSchema, captureFinishedSchema } from '../../shared/schemas'
+import { audioFrameMetadataSchema, captureFrameDiagnosticsSchema, captureFinishedSchema } from '../../shared/schemas'
 import { parseMicrophoneGain } from '../../shared/pcm'
+import { randomUUID } from 'node:crypto'
+import { getAppSpeech } from '../speech-service'
+import type { RecordingSpeechBridge } from '../recording-speech-bridge'
+import { speechDiagnostics } from '../speech-diagnostics'
 import { WavWriter } from './wav-writer'
 import { watchWindowsDefaultOutput } from './windows-output-monitor'
 import type { WindowsOutputMonitor } from './windows-output-monitor'
@@ -20,6 +24,7 @@ interface CaptureSource {
   ready: boolean
   finished: boolean
   padding: number
+  diagnosticSequence?: number
 }
 
 export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMode = 'mic'): Promise<{ stop(): Promise<void> } | undefined> {
@@ -61,6 +66,7 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
     return
   }
 
+  const sessionStartMs = performance.now()
   const captureSession = session.fromPartition('vinxa-audio-test')
   const sources: CaptureSource[] = []
   try {
@@ -86,6 +92,9 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
   let startupTimer: ReturnType<typeof setTimeout> | undefined
   let debugWrites = Promise.resolve()
   let outputMonitor: WindowsOutputMonitor | undefined
+  let speechBridge: RecordingSpeechBridge | undefined
+  let speechArmed = false
+  const speechSessionId = randomUUID()
   const debug = (stage: string): void => {
     if (process.env.VINXA_CAPTURE_DEBUG !== '1') return
     // A GUI app can outlive its launcher's stdout pipe. Diagnostics must not use it.
@@ -105,13 +114,23 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       clearTimeout(killTimer); clearTimeout(stopTimer); clearTimeout(startupTimer)
       await outputMonitor?.stop()
       for (const item of sources) if (!item.window.isDestroyed()) item.window.destroy()
+      if (speechBridge?.active) {
+        try {
+          for (const item of sources) await speechBridge.sourceEnd(speechSessionId, item.source, item.padding)
+          await speechBridge.stop(speechSessionId)
+        } catch {
+          error ??= 'Live speech could not finalize completely; inspect backend status and timing diagnostics'
+          await speechBridge.stop(speechSessionId).catch(() => {})
+        }
+      }
       const results = await Promise.allSettled(sources.map((item) => item.writer.close(item.padding)))
       if (results.some((result) => result.status === 'rejected')) error = 'Could not finalize one or more WAV files'
-      for (const channel of [ipcChannels.captureReady, ipcChannels.captureFrame, ipcChannels.captureFinished]) ipcMain.removeHandler(channel)
+      for (const channel of [ipcChannels.captureClock, ipcChannels.captureReady, ipcChannels.captureFrame, ipcChannels.captureFinished]) ipcMain.removeHandler(channel)
       captureSession.setPermissionCheckHandler(null)
       captureSession.setPermissionRequestHandler(null)
       captureSession.setDisplayMediaRequestHandler(null)
       await debugWrites
+      await speechDiagnostics.save().catch(() => { error ??= 'Could not save numeric speech diagnostics' })
       resolveStopped()
       if (!owner.isDestroyed()) void dialog.showMessageBox(owner, {
         type: error ? 'error' : 'info', title: 'Audio test stopped',
@@ -167,6 +186,16 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       pageStarted = true
     })
     item.window.webContents.on('console-message', (event) => {
+      if (process.env.VINXA_DIAGNOSTICS_DIR && event.message.startsWith('[vinxa-capture] diagnostics ')) {
+        try {
+          const values = JSON.parse(event.message.slice('[vinxa-capture] diagnostics '.length))
+          const keys = ['producedFrames', 'outstanding', 'rendererFrames', 'ipcFrames']
+          if (Object.keys(values).every((key) => keys.includes(key)) &&
+            Object.values(values).every((value) => typeof value === 'number' && Number.isFinite(value))) {
+            speechDiagnostics.record('capture_summary', item.source, 0, values)
+          }
+        } catch { /* Malformed diagnostic messages contain no trusted counters. */ }
+      }
       if (event.message.startsWith('[vinxa-capture]')) debug(`${item.source} ${event.message}`)
     })
     item.window.webContents.on('preload-error', () => { debug(`${item.source} preload-error`) })
@@ -179,11 +208,31 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       if (sources.every((source) => source.finished)) void close()
     })
   }
-  ipcMain.handle(ipcChannels.captureFrame, async (event, frame: unknown, metadata?: unknown) => {
+  ipcMain.handle(ipcChannels.captureClock, (event, clientSendMs: unknown) => {
+    const mainReceiveMs = performance.now()
+    authorize(event)
+    if (typeof clientSendMs !== 'number' || !Number.isFinite(clientSendMs)) throw new Error('Invalid capture clock request')
+    return { mainReceiveMs, mainSendMs: performance.now(), sessionStartMs }
+  })
+  ipcMain.handle(ipcChannels.captureFrame, async (event, frame: unknown, metadata?: unknown, diagnostics?: unknown) => {
     const item = authorize(event)
     if (metadata !== undefined) audioFrameMetadataSchema.parse(metadata)
+    const counters = diagnostics === undefined ? undefined : captureFrameDiagnosticsSchema.parse(diagnostics)
+    if (counters) {
+      speechDiagnostics.record('capture_ipc_received', item.source, 1600, {
+        ...counters, sequenceGap: counters.sequence - (item.diagnosticSequence ?? -1) - 1
+      })
+      item.diagnosticSequence = counters.sequence
+    }
     if (closing || item.finished) throw new Error('Capture already closed')
-    try { await item.writer.append(frame as ArrayBuffer) }
+    try {
+      await item.writer.append(frame as ArrayBuffer)
+      if (speechBridge && !speechBridge.taggedFrame(speechSessionId, frame as ArrayBuffer,
+        metadata === undefined ? undefined : audioFrameMetadataSchema.parse(metadata))) {
+        throw new Error('The live speech owner rejected a diagnostic frame')
+      }
+      speechDiagnostics.record('wav_written', item.source, 1600)
+    }
     catch { error = `${item.source} audio write failed; check disk space and file access`; void stop(); throw new Error(error) }
   })
   ipcMain.handle(ipcChannels.captureFinished, (event, payload: unknown) => {
@@ -208,6 +257,23 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
       buttons: ['Stop recording'], defaultId: 0
     }).then(() => stop())
   })
+  if (process.env.VINXA_CAPTURE_SPEECH === '1') {
+    try {
+      const speech = getAppSpeech()
+      if (!speech) throw new Error('Speech service is unavailable')
+      speechBridge = speech.createBridge({
+        getState: () => closing ? 'stopping' : speechArmed ? 'recording' : 'awaiting-consent',
+        hasConsent: (sessionId) => sessionId === speechSessionId
+      }, owner)
+      await speechBridge.start({ sessionId: speechSessionId, meetingId: 'diagnostic-' + speechSessionId,
+        model: speech.selectedModel, language: speech.selectedLanguage, enabledSources: names })
+      speechArmed = true
+    } catch {
+      error = 'Live speech diagnostic could not start; verify the Python runtime and cached model'
+      await close()
+      return { stop }
+    }
+  }
   startupTimer = setTimeout(() => { error = 'Audio startup timed out before the audio context became ready'; void stop() }, 20000)
   if (names.includes('system')) {
     try {
@@ -235,7 +301,8 @@ export async function startCaptureTest(owner: BrowserWindow, mode: CaptureTestMo
   }
   try {
     await Promise.all(sources.map(async (item) => {
-      const query = { source: item.source, micGain: String(item.source === 'mic' ? micGain : 1) }
+      const query: Record<string, string> = { source: item.source, micGain: String(item.source === 'mic' ? micGain : 1) }
+      if (process.env.VINXA_DIAGNOSTICS_DIR) query.diagnostics = '1'
       if (process.env.ELECTRON_RENDERER_URL) {
         await item.window.loadURL(`${process.env.ELECTRON_RENDERER_URL}/capture/index.html?${new URLSearchParams(query)}`)
       } else await item.window.loadFile(join(__dirname, '../renderer/capture/index.html'), { query })

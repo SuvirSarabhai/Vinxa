@@ -2,10 +2,13 @@ import { spawn } from 'node:child_process'
 import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
+import { mkdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { AudioFrameMetadata, AudioSourceName, SidecarConfig, SidecarControl,
   SidecarError, SidecarStatus, TranscriptSegment } from '../shared/contracts'
+import { clockEstimate, encodeTimedFrame } from '../shared/frame-protocol'
+import { speechDiagnostics } from './speech-diagnostics'
 import { sourceIds } from '../shared/contracts'
 import { audioFrameMetadataSchema, sidecarConfigSchema, sidecarControlSchema,
   sidecarEventSchema, sidecarListeningSchema, transcriptSegmentSchema } from '../shared/schemas'
@@ -22,6 +25,8 @@ interface Options {
   maxRestarts?: number; backoffMs?: number; startupMs?: number; readyMs?: number
   healthMs?: number; requestMs?: number; bufferFramesPerSource?: number
   shutdownMs?: number
+  protocolVersion?: 1 | 2
+  keepWarm?: boolean
 }
 interface QueuedFrame { source: AudioSourceName; pcm: Uint8Array; metadata: AudioFrameMetadata }
 function deferred<T>() {
@@ -77,6 +82,10 @@ export class SidecarManager {
   private stopping = false
   private active = false
   private permanent = false
+  private standby = false
+  private switching = false
+  private clockSamples: { offsetMs: number; uncertaintyMs: number }[] = []
+  private clockMapping?: { offsetMs: number; uncertaintyMs: number }
 
   constructor(private readonly options: Options) {
     for (const [value, minimum, maximum] of [
@@ -89,11 +98,59 @@ export class SidecarManager {
 
   get ready(): boolean { return this.available && !this.stopping && !this.permanent }
 
+  async prewarm(model = 'base.en', language = 'en'): Promise<void> {
+    this.standby = true
+    await this.start({ sessionId: randomUUID(), meetingId: 'speech-warmup', model, language, enabledSources: ['mic', 'system'] })
+  }
+
+  async endSession(): Promise<void> {
+    if (!this.options.keepWarm) return this.stop()
+    if (this.standby) return
+    await this.drain()
+    await this.request('session-end', {}, 30000)
+    this.standby = true
+    this.expected.clear()
+    this.finalEnd.clear()
+    this.paused = false
+  }
+
+  private async synchronizeClock(): Promise<void> {
+    this.clockSamples = []
+    for (let index = 0; index < 3; index++) await this.request('clock-sync', { clientSendMs: performance.now() })
+    const best = [...this.clockSamples].sort((a, b) => a.uncertaintyMs - b.uncertaintyMs)[0]
+    if (!best) throw new SidecarOperationError('Clock synchronization unavailable')
+    await this.request('clock-set', best)
+    this.clockMapping = best
+  }
+
   async start(session: SidecarSession): Promise<void> {
+    if (this.active && this.options.keepWarm && this.standby && !this.switching) {
+      if (!this.ready || session.model !== this.session!.model) throw new SidecarOperationError('Wait for warm-up or restart to select a different model')
+      if (!session.meetingId || session.meetingId.length > 160) throw new SidecarOperationError('Invalid meeting identity')
+      sidecarControlSchema.parse({ type: 'session-begin', sessionId: this.session!.sessionId, generation: this.generation,
+        requestId: randomUUID(), nextSessionId: session.sessionId, language: session.language, enabledSources: session.enabledSources })
+      this.switching = true
+      try {
+        this.firstReady = deferred<void>()
+        void this.firstReady.promise.catch(() => {})
+        const pending = this.request('session-begin', { nextSessionId: session.sessionId,
+          language: session.language, enabledSources: session.enabledSources }, 30000)
+        this.session = { ...session, enabledSources: [...session.enabledSources] }
+        this.available = false
+        this.expected.clear(); this.finalEnd.clear(); this.paused = false
+        await pending
+        await this.firstReady.promise
+        this.standby = false
+        return
+      } catch (error) {
+        this.finishGeneration?.('Session transition failed')
+        throw error
+      } finally { this.switching = false }
+    }
     if (this.active) throw new SidecarOperationError('A sidecar session is already active')
     const { meetingId: _, ...wire } = session
     if (!sidecarConfigSchema.safeParse({ ...wire, type: 'config', token: randomBytes(32).toString('hex'),
-      protocolVersion: 1, generation: 0, sampleRate: 16000, channels: 1, encoding: 'pcm_s16le', frameMs: 100 }).success) {
+      protocolVersion: this.options.protocolVersion ?? 1, ...(this.options.protocolVersion === 2 ? { timedFrames: true } : {}), generation: 0, sampleRate: 16000, channels: 1, encoding: 'pcm_s16le', frameMs: 100 }).success) {
       throw new SidecarOperationError('Invalid sidecar session configuration')
     }
     if (!session.meetingId || session.meetingId.length > 160) throw new SidecarOperationError('Invalid meeting identity')
@@ -158,6 +215,11 @@ export class SidecarManager {
     const environment: NodeJS.ProcessEnv = { ...process.env, ...this.options.runtime.env,
       VINXA_SIDECAR_TOKEN: token, VINXA_SIDECAR_SESSION_ID: this.session!.sessionId,
       VINXA_SIDECAR_GENERATION: String(generation) }
+    if (process.env.VINXA_DIAGNOSTICS_DIR) {
+      await mkdir(process.env.VINXA_DIAGNOSTICS_DIR, { recursive: true })
+      environment.VINXA_DIAGNOSTICS_PATH = join(process.env.VINXA_DIAGNOSTICS_DIR,
+        'sidecar-' + randomUUID() + '-' + generation + '.json')
+    }
     delete environment.ELECTRON_RUN_AS_NODE
     const child = (this.options.spawnProcess ?? spawn)(this.options.runtime.command, this.options.runtime.args,
       { cwd: this.options.runtime.cwd, env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -169,6 +231,7 @@ export class SidecarManager {
     const readyDeadline = setTimeout(() => fail('Sidecar model readiness timed out'), this.options.readyMs ?? 60000)
     const flushTimer = setInterval(() => this.flush(), 20)
     this.expected.clear()
+    this.clockMapping = undefined
     const current = (): boolean => generation === this.generation && socket === this.socket
     child.stdout?.setEncoding('utf8')
     child.stdout?.on('data', (chunk: string) => {
@@ -189,7 +252,9 @@ export class SidecarManager {
           if (!current() || this.stopping) return
           const { meetingId: _, ...session } = this.session!
           socket!.send(JSON.stringify(sidecarConfigSchema.parse({ ...session, type: 'config', token,
-            generation, protocolVersion: 1, sampleRate: 16000, channels: 1, encoding: 'pcm_s16le', frameMs: 100 })))
+            generation, protocolVersion: this.options.protocolVersion ?? 1,
+            ...(this.options.protocolVersion === 2 ? { timedFrames: true } : {}),
+            ...(this.options.keepWarm ? { keepAlive: true, standby: this.standby } : {}), sampleRate: 16000, channels: 1, encoding: 'pcm_s16le', frameMs: 100 })))
         })
         socket.addEventListener('message', (message) => {
           if (!current()) return
@@ -197,22 +262,36 @@ export class SidecarManager {
           try {
             const event = sidecarEventSchema.parse(JSON.parse(message.data))
             if (event.sessionId !== this.session!.sessionId || event.generation !== generation) {
+              if (this.switching && event.generation === generation && event.type === 'status' &&
+                event.requestId && this.pending.has(event.requestId)) {
+                const request = this.pending.get(event.requestId)!
+                clearTimeout(request.timer); this.pending.delete(event.requestId); request.resolve()
+                return
+              }
               fail('Stale sidecar event rejected'); return
             }
             if (event.type === 'status') {
+              if (event.clock) this.clockSamples.push(clockEstimate(event.clock.clientSendMs, event.clock.serverReceiveMs,
+                event.clock.serverSendMs, performance.now()))
               if (event.requestId) {
                 const request = this.pending.get(event.requestId)
                 if (request) { clearTimeout(request.timer); this.pending.delete(event.requestId); request.resolve() }
               }
-              if (event.status === 'ready') {
+              const markReady = (): void => {
+                if (!current() || this.stopping) return
                 clearTimeout(readyDeadline)
                 this.available = this.hadReady = true
                 this.firstReady.resolve()
                 for (const waiter of this.readyWaiters) waiter.resolve()
                 this.readyWaiters.clear()
                 this.reportDrops()
+                this.options.onStatus(event)
               }
-              this.options.onStatus(event)
+              if (event.status === 'ready' && !event.requestId) {
+                if (this.options.protocolVersion === 2 && !this.clockMapping) {
+                  void this.synchronizeClock().then(markReady).catch(() => fail('Source clock synchronization failed'))
+                } else markReady()
+              } else this.options.onStatus(event)
               if (!health && event.status !== 'stopped') health = setInterval(() => {
                 if (!this.stopping) void this.request('ping').catch(() => fail('Sidecar health check timed out'))
               }, this.options.healthMs ?? 5000)
@@ -227,7 +306,15 @@ export class SidecarManager {
               }
               this.options.onTranscript(transcriptSegmentSchema.parse({
                 id: event.id, meetingId: this.session!.meetingId, speakerId: null, source: event.source,
-                text: event.text, startMs: event.startMs, endMs: event.endMs, isFinal: event.type === 'final'
+                text: event.text, startMs: event.startMs, endMs: event.endMs, isFinal: event.type === 'final',
+                ...(event.timing && this.clockMapping ? { timing: {
+                  ...event.timing, clock: 'sender-monotonic',
+                  ...(event.timing.finalizationStartMs === undefined ? {} :
+                    { finalizationStartMs: event.timing.finalizationStartMs - this.clockMapping.offsetMs }),
+                  ...Object.fromEntries(['captureStartMs', 'captureEndMs', 'sentMs', 'receivedMs',
+                    'inferenceStartMs', 'inferenceEndMs', 'emittedMs'].map((key) =>
+                      [key, event.timing![key as keyof typeof event.timing] as number - this.clockMapping!.offsetMs]))
+                } } : {})
               }))
             }
           } catch { fail('Invalid sidecar event') }
@@ -249,7 +336,8 @@ export class SidecarManager {
         if (process.platform === 'win32' && !this.options.spawnProcess && child.pid) {
           // Python's Windows venv redirector can have a child. Terminate this owned tree.
           await new Promise<void>((resolve) => {
-            const killer = spawn(join(process.env.SystemRoot ?? 'C:/Windows', 'System32/taskkill.exe'),
+            if (!process.env.SystemRoot) throw new SidecarOperationError('Windows process runtime unavailable; restart refused')
+            const killer = spawn(join(process.env.SystemRoot, 'System32/taskkill.exe'),
               ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
             killer.once('error', () => resolve()); killer.once('close', () => resolve())
           })
@@ -276,28 +364,37 @@ export class SidecarManager {
   }
 
   sendFrame(source: AudioSourceName, pcm: Uint8Array, metadata: AudioFrameMetadata): boolean {
-    if (!this.active || this.stopping || this.permanent || this.paused || !this.hadReady) return false
+    speechDiagnostics.record('manager_received', source, pcm.byteLength / 2)
+    if (!this.active || this.standby || this.switching || this.stopping || this.permanent || this.paused || !this.hadReady) {
+      speechDiagnostics.record('manager_rejected_state', source, pcm.byteLength / 2)
+      return false
+    }
     audioFrameMetadataSchema.parse(metadata)
     if (!this.session!.enabledSources.includes(source) || !(pcm instanceof Uint8Array) || pcm.byteLength !== 3200) {
       throw new SidecarOperationError('Invalid untagged PCM frame')
     }
+    if (this.options.protocolVersion === 2) encodeTimedFrame(source, pcm, metadata, performance.now())
     const limit = this.options.bufferFramesPerSource ?? 20
     if (this.queue.filter((frame) => frame.source === source).length >= limit) {
+      speechDiagnostics.record('manager_drop_overflow', source, 1600)
       this.queue.splice(this.queue.findIndex((frame) => frame.source === source), 1)
       this.dropped.set(source, (this.dropped.get(source) ?? 0) + 1600)
     }
+    speechDiagnostics.record('manager_enqueued', source, 1600, { startSample: metadata.startSample })
     this.queue.push({ source, pcm: Uint8Array.from(pcm), metadata: { ...metadata } })
     this.flush()
     return true
   }
 
   private flush(): void {
-    if (!this.available || this.paused || !this.socket || this.socket.readyState !== 1) return
+    if (!this.available || this.standby || this.paused || !this.socket || this.socket.readyState !== 1) return
     let sent = 0
     while (this.queue.length && this.socket.bufferedAmount < 128000 && sent++ < 8) {
       const frame = this.queue.shift()!
+      speechDiagnostics.record('manager_dequeued', frame.source, 1600)
       const expected = this.expected.get(frame.source)
       if (expected !== undefined && frame.metadata.startSample < expected) {
+        speechDiagnostics.record('manager_drop_stale', frame.source, 1600)
         this.dropped.set(frame.source, (this.dropped.get(frame.source) ?? 0) + 1600)
         continue
       }
@@ -307,10 +404,18 @@ export class SidecarManager {
           ...(expected === undefined ? {} : { droppedSamples: frame.metadata.startSample - expected }) })
           .catch(() => this.finishGeneration?.('Source timing acknowledgement failed'))
       }
-      const tagged = new Uint8Array(3201)
-      tagged[0] = sourceIds[frame.source]; tagged.set(frame.pcm, 1)
-      try { this.socket.send(tagged) }
-      catch { this.dropped.set(frame.source, (this.dropped.get(frame.source) ?? 0) + 1600); this.finishGeneration?.('Audio transmission failed'); break }
+      const tagged = this.options.protocolVersion === 2
+        ? encodeTimedFrame(frame.source, frame.pcm, frame.metadata, performance.now()) : new Uint8Array(3201)
+      if (this.options.protocolVersion !== 2) { tagged[0] = sourceIds[frame.source]; tagged.set(frame.pcm, 1) }
+      try {
+        const started = performance.now()
+        this.socket.send(tagged)
+        speechDiagnostics.record('websocket_written', frame.source, 1600, {
+          startSample: frame.metadata.startSample, bufferedBytes: this.socket.bufferedAmount,
+          writeMs: performance.now() - started
+        })
+      }
+      catch { speechDiagnostics.record('manager_drop_send_failed', frame.source, 1600); this.dropped.set(frame.source, (this.dropped.get(frame.source) ?? 0) + 1600); this.finishGeneration?.('Audio transmission failed'); break }
       this.expected.set(frame.source, frame.metadata.startSample + 1600)
     }
     if (this.available) this.reportDrops()
@@ -319,19 +424,23 @@ export class SidecarManager {
     for (const [source, samples] of this.dropped) if (samples) {
       this.error('AUDIO_DROPPED', 'Bounded restart or transmission buffer discarded audio', true)
       this.options.onStatus({ type: 'status', sessionId: this.session!.sessionId, generation: this.generation,
-        status: this.available ? 'listening' : 'restarting', metrics: { source, queueDepth: this.queue.length, droppedSamples: samples } })
+        status: this.permanent ? 'error' : this.available ? 'listening' : 'restarting',
+        metrics: { source, queueDepth: this.queue.length, droppedSamples: samples } })
     }
     this.dropped.clear()
   }
   private dropQueue(): void {
-    for (const frame of this.queue) this.dropped.set(frame.source, (this.dropped.get(frame.source) ?? 0) + 1600)
+    for (const frame of this.queue) {
+      speechDiagnostics.record('manager_drop_clear', frame.source, 1600)
+      this.dropped.set(frame.source, (this.dropped.get(frame.source) ?? 0) + 1600)
+    }
     this.queue = []; this.reportDrops()
   }
   private async drain(): Promise<void> {
-    const deadline = Date.now() + 3000
+    const deadline = performance.now() + 3000
     while (this.queue.length) {
       this.flush()
-      if (Date.now() > deadline || !this.available) throw new SidecarOperationError('Audio buffer could not drain')
+      if (performance.now() > deadline || !this.available) throw new SidecarOperationError('Audio buffer could not drain')
       await delay(20)
     }
   }
@@ -377,6 +486,7 @@ export class SidecarManager {
         throw new SidecarOperationError('Sidecar process did not exit')
       }
       this.active = false
+      await speechDiagnostics.save().catch(() => this.error('DIAGNOSTICS_FAILED', 'Numeric diagnostics could not be saved', true))
       this.firstReady.reject(new SidecarOperationError('Session stopped before readiness'))
       this.status('stopped')
     }

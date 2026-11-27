@@ -22,6 +22,17 @@ describe('sidecar preload boundary', () => {
     await import('./index')
   })
 
+  it('preserves numeric capture counters and rejects additional diagnostic payloads', async () => {
+    const bridge = fake.apis.get('vinxaCapture')
+    const frame = new ArrayBuffer(3201)
+    const counters = { sequence: 4, producedSamples: 8000, rendererFrames: 5, ipcFrames: 5 }
+    await bridge.frame(frame, undefined, counters)
+    expect(fake.invoke).toHaveBeenLastCalledWith(ipcChannels.captureFrame, frame, undefined, counters)
+    expect(() => bridge.frame(frame, undefined, { ...counters, transcript: 'private-test-phrase' })).toThrow()
+    expect(() => bridge.frame(frame, undefined, { ...counters, sequence: -1 })).toThrow()
+    expect(fake.invoke).toHaveBeenCalledTimes(1)
+  })
+
   it('validates engine events and removes the exact subscription on unsubscribe', () => {
     const listener = vi.fn()
     const unsubscribe = fake.apis.get('vinxa').onEngineStatus(listener)
@@ -32,6 +43,20 @@ describe('sidecar preload boundary', () => {
     expect(listener).toHaveBeenCalledTimes(1)
     unsubscribe()
     expect(fake.remove).toHaveBeenCalledWith(ipcChannels.engineStatus, handler)
+  })
+
+  it('delivers cached readiness to a late subscriber and honors unsubscribe before it resolves', async () => {
+    const status = { type: 'status', ...identity, status: 'ready' }
+    fake.invoke.mockResolvedValueOnce(status)
+    const listener = vi.fn()
+    fake.apis.get('vinxa').onEngineStatus(listener)
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(status))
+    fake.invoke.mockResolvedValueOnce(status)
+    const cancelled = vi.fn()
+    const unsubscribe = fake.apis.get('vinxa').onEngineStatus(cancelled)
+    unsubscribe()
+    await Promise.resolve()
+    expect(cancelled).not.toHaveBeenCalled()
   })
 
   it('accepts only validated error events on the error channel', () => {

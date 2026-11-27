@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ipcChannels } from '../../shared/ipc-channels'
 
 const fake = vi.hoisted(() => ({
-  packaged: false,
+  packaged: false, speechService: undefined as any,
   outputChanged: undefined as (() => void) | undefined,
   outputFailed: undefined as ((message: string) => void) | undefined,
   stopMonitor: vi.fn().mockResolvedValue(undefined),
@@ -14,6 +14,8 @@ const fake = vi.hoisted(() => ({
   getSources: vi.fn().mockResolvedValue([{ id: 'screen:0:0', name: 'Screen' }]),
   dialog: vi.fn()
 }))
+
+vi.mock('../speech-service', () => ({ getAppSpeech: () => fake.speechService }))
 
 vi.mock('./windows-output-monitor', () => ({
   watchWindowsDefaultOutput: vi.fn(async (_path: string, changed: () => void, failed: (message: string) => void) => {
@@ -47,6 +49,7 @@ vi.mock('electron', () => ({
 
 afterEach(async () => {
   fake.packaged = false
+  fake.speechService = undefined
   fake.outputChanged = undefined
   fake.outputFailed = undefined
   vi.useRealTimers()
@@ -75,6 +78,29 @@ async function finishAll() {
 }
 
 describe('capture coordinator source isolation', () => {
+  it('routes an explicitly enabled speech diagnostic through consent, timing, finalization and the warmed bridge', async () => {
+    vi.stubEnv('VINXA_CAPTURE_SPEECH', '1')
+    const bridge = { active: false, start: vi.fn(async () => { bridge.active = true }),
+      taggedFrame: vi.fn().mockReturnValue(true), sourceEnd: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(async () => { bridge.active = false }) }
+    fake.speechService = { selectedModel: 'base.en', selectedLanguage: 'en',
+      createBridge: vi.fn().mockReturnValue(bridge) }
+    const { test } = await start('mic')
+    const recordingOwner = fake.speechService.createBridge.mock.calls[0][0]
+    expect(recordingOwner.getState()).toBe('recording')
+    const window = fake.windows[0]
+    const metadata = { startSample: 0, sequence: 0, captureTimeMs: 100, captureErrorMs: 1,
+      sampleCount: 1600, captureKind: 'render-estimate' }
+    const packet = new ArrayBuffer(3201)
+    await fake.handlers.get(ipcChannels.captureFrame)({ senderFrame: window.webContents.mainFrame }, packet, metadata)
+    expect(bridge.taggedFrame).toHaveBeenCalledWith(expect.any(String), packet, metadata)
+    await finishAll()
+    await test.stop()
+    expect(bridge.sourceEnd).toHaveBeenCalledWith(expect.any(String), 'mic', 0)
+    expect(bridge.stop).toHaveBeenCalledOnce()
+    expect(recordingOwner.getState()).toBe('stopping')
+  })
+
   it('stops both sources on a native default-output change without a browser devicechange event', async () => {
     const { test } = await start('both')
     expect(fake.outputChanged).toBeTypeOf('function')

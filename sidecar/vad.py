@@ -86,9 +86,12 @@ class VadGate:
             raise ValueError("VAD requires finite mono audio")
         audio = np.concatenate((self.pending, samples))
         events = []
+        positive = active = 0
         complete = len(audio) // WINDOW * WINDOW
         for offset in range(0, complete, WINDOW):
             probability = self.scorer(audio[offset:offset + WINDOW])
+            positive += int(probability >= self.settings.threshold)
+            active += int(self.active)
             start = self.cursor
             self.cursor += WINDOW
             if not self.active:
@@ -109,6 +112,8 @@ class VadGate:
                     self.attack = self.quiet = None
             else:
                 self.quiet = None
+        self.last_stats = dict(scored_samples=complete, positive_samples=positive * WINDOW,
+                               active_samples=active * WINDOW, pending_samples=len(audio) - complete)
         self.pending = audio[complete:].copy()
         return events
 

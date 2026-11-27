@@ -66,3 +66,89 @@ def test_negative_model_alignment_estimates_are_reported_not_clamped():
     source = measured.report()["sources"]["mic"]
     assert source["negative_estimates"] == 1
     assert source["partial_client_receipt_latency"]["count"] == 0
+
+
+def test_every_unmatched_revision_and_empty_final_is_logged_without_text():
+    measured = Measurements({"mic": [], "system": []})
+    measured.sent_frame("mic", 0, 10)
+    for kind, text in (("partial", "private-test-phrase"), ("partial", "revision"), ("final", "")):
+        measured.observe({"type": kind, "id": "one", "source": "mic", "text": text,
+                          "startMs": 0, "endMs": 100}, 10.5)
+    report = measured.report()
+    assert [row["type"] for row in report["event_log"]] == ["partial", "partial", "final"]
+    assert report["event_log"][-1]["empty_text"]
+    assert all(row["capture_timestamp"] == "unavailable" for row in report["event_log"])
+    assert report["event_log"][0]["event_end_frame_to_client_receipt_ms"] == 500
+    assert "private-test-phrase" not in json.dumps(report)
+
+
+def test_backpressure_duration_and_pacing_are_measured_separately():
+    async def run():
+        now = [0.0]
+        async def sleep(seconds):
+            now[0] += seconds
+        class Socket:
+            async def send(self, data):
+                now[0] += 0.025
+        measured = Measurements({"mic": []})
+        await paced_send(Socket(), {"mic": [bytes(3201)] * 2}, measured,
+                         clock=lambda: now[0], sleep=sleep)
+        source = measured.report()["sources"]["mic"]
+        assert source["samples_sent_including_padding"] == 3200
+        assert source["websocket_send_duration_ms"]["median_ms"] == pytest.approx(25)
+        assert measured.report()["replay_pacing_jitter_ms"]["maximum_ms"] == pytest.approx(0)
+    asyncio.run(run())
+
+
+def test_sidecar_timings_join_by_identity_without_subtracting_process_clocks():
+    measured = Measurements({"mic": []})
+    measured.observe({"type": "partial", "id": "session:0:mic:1:0", "sessionId": "session",
+                      "source": "mic", "text": "private-test-phrase", "startMs": 0, "endMs": 100}, 10)
+    measured.attach_sidecar_timing({"events": [
+        {"source": "mic", "stage": "server_received", "sidecar_monotonic_seconds": 100},
+        {"source": "mic", "stage": "inference_start", "queue_wait_ms": 20},
+        {"source": "mic", "stage": "inference_complete", "worker_start": 101,
+         "worker_complete": 102, "duration_ms": 1000, "start": 0, "end": 1600},
+        {"source": "mic", "stage": "text_emitted", "generation": 0, "utterance": 1,
+         "chunk": 0, "final": False, "sidecar_monotonic_seconds": 103}
+    ]})
+    row = measured.report()["event_log"][0]
+    assert row["sidecar_receive_timestamp"] == 100
+    assert row["transcription_start_timestamp"] == 101
+    assert row["emission_timestamp"] == 103
+    assert row["measured_capture_latency_ms"] == "unavailable"
+    assert row["client_receive_monotonic_seconds"] == 10
+
+
+def test_timed_event_measurements_use_negotiated_offset_and_keep_sources_separate():
+    measured = Measurements({"mic": [], "system": []})
+    measured.clock_offset_ms = 1000
+    timing = {"clock": "sidecar-monotonic", "firstSequence": 2, "lastSequence": 3,
+              "captureStartMs": 1000, "captureEndMs": 1010, "sentMs": 1012,
+              "receivedMs": 1014, "inferenceStartMs": 1020, "inferenceEndMs": 1040,
+              "emittedMs": 1050, "uncertaintyMs": 1, "finalizationStartMs": 1045}
+    measured.observe({"type": "partial", "source": "mic", "text": "unmatched-private-phrase",
+                      "startMs": 0, "endMs": 100, "timing": timing}, 0.1)
+    measured.observe({"type": "final", "source": "system", "text": "another-private-phrase",
+                      "startMs": 0, "endMs": 100, "timing": timing}, 0.12)
+    report = measured.report()
+    assert report["sources"]["mic"]["capture_to_partial_ms"]["median_ms"] == 90
+    assert report["sources"]["mic"]["sidecar_receive_to_partial_ms"]["median_ms"] == 86
+    assert report["sources"]["system"]["capture_to_final_ms"]["median_ms"] == 110
+    assert report["sources"]["mic"]["sidecar_processing_ms"]["median_ms"] == 20
+    assert report["event_log"][0]["finalization_duration_ms"] == 5
+    assert report["sources"]["mic"]["capture_to_final_ms"]["count"] == 0
+    assert "unmatched-private-phrase" not in json.dumps(report)
+
+
+def test_negative_capture_latency_is_preserved_and_flagged():
+    measured = Measurements({"mic": []})
+    measured.clock_offset_ms = 0
+    timing = dict(clock='sidecar-monotonic', firstSequence=0, lastSequence=0,
+                  captureStartMs=100, captureEndMs=200, sentMs=210, receivedMs=220,
+                  inferenceStartMs=230, inferenceEndMs=240, emittedMs=250, uncertaintyMs=1)
+    measured.observe(dict(type='partial', source='mic', text='private-test-phrase',
+                          startMs=0, endMs=100, timing=timing), 0.1)
+    report = measured.report()
+    assert report['event_log'][0]['measured_capture_latency_ms'] == -100
+    assert report['sources']['mic']['negative_capture_estimates'] == 1

@@ -8,6 +8,8 @@ import shutil
 from threading import Lock
 from time import perf_counter
 
+monotonic = perf_counter
+
 from .audio_utils import read_wav, real_time_factor
 from .local_agreement import Word, normalized
 
@@ -41,6 +43,11 @@ class Transcription:
 class WordInference:
     words: tuple[Word, ...]
     inference_seconds: float
+    segments_seen: int = 0
+    segments_filtered: int = 0
+    words_outside_window: int = 0
+    started_monotonic_seconds: float = 0
+    completed_monotonic_seconds: float = 0
 
 
 def model_cache(path: str | Path | None = None) -> Path:
@@ -58,8 +65,8 @@ class SpeechEngine:
     def __init__(self, model: str = "base.en", *, device: str = "cpu", compute_type: str = "int8",
                  cache_dir: str | Path | None = None, cpu_threads: int = 4,
                  local_files_only: bool = False, model_path: str | Path | None = None):
-        if model not in ("base.en", "small"):
-            raise ValueError("Supported models are base.en and small")
+        if model not in ("base.en", "small", "tiny.en"):
+            raise ValueError("Supported models are base.en, small and optional tiny.en")
         if cpu_threads < 1:
             raise ValueError("CPU thread count must be positive")
         self.model_name = model
@@ -92,7 +99,7 @@ class SpeechEngine:
             identifier = self.model_name
             cached = self.cache_dir / f"models--Systran--faster-whisper-{self.model_name}" / "snapshots"
             if not self.local_files_only and not cached.exists():
-                estimated_bytes = (200 if self.model_name == "base.en" else 600) * 1024 * 1024
+                estimated_bytes = {"tiny.en": 100, "base.en": 200, "small": 600}[self.model_name] * 1024 * 1024
                 try:
                     free_space = shutil.disk_usage(self.cache_dir).free
                 except OSError as error:
@@ -147,6 +154,7 @@ class SpeechEngine:
         with self._lock:
             self._load()
             started = perf_counter()
+            started_monotonic = monotonic()
             try:
                 segments, _ = self._model.transcribe(
                     audio, language=language, beam_size=beam_size, word_timestamps=True,
@@ -155,20 +163,27 @@ class SpeechEngine:
                     hallucination_silence_threshold=1.0)
                 words = []
                 quiet = float(np.sqrt(np.mean(audio.astype(np.float64) ** 2))) < 0.003
+                segments_seen = segments_filtered = words_outside_window = 0
                 for segment in segments:
-                    if (getattr(segment, "no_speech_prob", 0) >= 0.6 or
-                            getattr(segment, "avg_logprob", 0) < -1.0 or
+                    segments_seen += 1
+                    if (getattr(segment, "avg_logprob", 0) < -1.0 or
+                            (getattr(segment, "no_speech_prob", 0) >= 0.6 and getattr(segment, "avg_logprob", 0) < -0.5) or
                             getattr(segment, "compression_ratio", 1) > 2.4):
+                        segments_filtered += 1
                         continue
                     if quiet and normalized(segment.text) in {"thankyouforwatching", "thanksforwatching", "subscribe"}:
+                        segments_filtered += 1
                         continue
                     for word in segment.words or []:
                         start, end = round(word.start * 16000), round(word.end * 16000)
                         if 0 <= start < end <= len(audio) and word.word.strip():
                             words.append(Word(word.word, offset + start, offset + end))
+                        else:
+                            words_outside_window += 1
             except Exception as error:
                 raise SpeechEngineError("INFERENCE_FAILED", "Local word inference failed") from error
-            return WordInference(tuple(words), perf_counter() - started)
+            return WordInference(tuple(words), perf_counter() - started, segments_seen, segments_filtered, words_outside_window,
+                                 started_monotonic, monotonic())
 
     def warmup(self, *, language="en"):
         import numpy as np

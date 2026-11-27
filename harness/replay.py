@@ -14,8 +14,10 @@ import platform
 import secrets
 import subprocess
 import sys
-from time import monotonic
+from time import perf_counter as monotonic
 import uuid
+import tempfile
+from datetime import datetime, timezone
 
 import numpy as np
 import psutil
@@ -25,7 +27,7 @@ from websockets.exceptions import ConnectionClosed
 from harness.latency import Measurements
 from sidecar.audio_utils import read_wav
 from sidecar.local_agreement import Word
-from sidecar.protocol import validate
+from sidecar.protocol import validate, pack_timed_frame
 
 _logger = logging.Logger("vinxa.harness.socket")
 _logger.addHandler(logging.NullHandler())
@@ -104,26 +106,36 @@ def model_alignment(paths, model, language):
             process.join(5)
 
 
-async def paced_send(socket, packets, measurements, clock=monotonic, sleep=asyncio.sleep):
+async def paced_send(socket, packets, measurements, clock=monotonic, sleep=asyncio.sleep, timed=False):
     start = clock()
     lag = []
     for index in range(max(len(items) for items in packets.values())):
         due = start + (index + 1) * 0.1
         await sleep(max(0, due - clock()))
         lag.append(max(0, (clock() - due) * 1000))
+        measurements.pacing_jitter.append(lag[-1])
         if lag[-1] > 500:
             raise RuntimeError("Replay could not maintain real-time pacing")
         for source, items in packets.items():
             if index < len(items):
-                await socket.send(items[index])
-                measurements.sent_frame(source, index, clock())
+                write_started = clock()
+                packet = items[index]
+                if timed:
+                    packet = pack_timed_frame(0 if source == "mic" else 1, packet[1:], index,
+                        index * 1600, (start + index * 0.1) * 1000, write_started * 1000)
+                await socket.send(packet)
+                completed = clock()
+                measurements.sent_frame(source, index, completed)
+                measurements.delivery(source, max(0, (len(items[index]) - 1) // 2), write_started, completed)
     return lag
 
 
 async def replay(inputs, references, *, model="base.en", language="en", leading=2, trailing=2):
     session_id, token = str(uuid.uuid4()), secrets.token_hex(32)
+    diagnostic_dir = tempfile.TemporaryDirectory(prefix="vinxa-stage1-")
+    diagnostic_path = Path(diagnostic_dir.name) / "sidecar.json"
     environment = {**os.environ, "VINXA_SIDECAR_TOKEN": token, "VINXA_SIDECAR_SESSION_ID": session_id,
-                   "VINXA_SIDECAR_GENERATION": "0"}
+                   "VINXA_SIDECAR_GENERATION": "0", "VINXA_DIAGNOSTICS_PATH": str(diagnostic_path)}
     python = sys.executable
     if os.name == "nt":
         python = sys._base_executable
@@ -145,11 +157,12 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
         handshake = validate("listening", json.loads(await asyncio.wait_for(process.stdout.readline(), 15)))
         async with connect(f"ws://127.0.0.1:{handshake['port']}", proxy=None, logger=_logger,
                            max_size=65536, max_queue=16, compression=None) as socket:
-            await socket.send(json.dumps({"type": "config", "protocolVersion": 1, "sessionId": session_id, "generation": 0,
+            await socket.send(json.dumps({"type": "config", "protocolVersion": 2, "timedFrames": True, "sessionId": session_id, "generation": 0,
                 "token": token, "sampleRate": 16000, "channels": 1, "encoding": "pcm_s16le", "frameMs": 100,
                 "model": model, "language": language, "enabledSources": [item.source for item in inputs]}))
             ready, stopped = asyncio.Event(), asyncio.Event()
             acknowledgements = {}
+            responses = {}
             async def receive():
                 try:
                     async for message in socket:
@@ -162,6 +175,7 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
                         if event.get("status") == "stopped":
                             stopped.set()
                         if event.get("requestId") in acknowledgements:
+                            responses[event["requestId"]] = event
                             acknowledgements[event["requestId"]].set()
                         if event["type"] == "error" and not event["recoverable"]:
                             raise RuntimeError("Replay sidecar failed")
@@ -177,6 +191,7 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
                                                "requestId": request_id, **fields}))
                 try:
                     await asyncio.wait_for(acknowledgement.wait(), 40)
+                    return responses.pop(request_id)
                 finally:
                     acknowledgements.pop(request_id, None)
 
@@ -192,11 +207,23 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
                 finally:
                     waiter.cancel()
             await wait_ready()
+            exchanges = []
+            for _ in range(3):
+                sent = monotonic() * 1000
+                response = await control("clock-sync", clientSendMs=sent)
+                received = monotonic() * 1000
+                stamp = response["clock"]
+                offset = ((stamp["serverReceiveMs"] - sent) + (stamp["serverSendMs"] - received)) / 2
+                uncertainty = max(0, (received - sent - stamp["serverSendMs"] + stamp["serverReceiveMs"]) / 2)
+                exchanges.append({"offsetMs": offset, "uncertaintyMs": uncertainty})
+            translation = min(exchanges, key=lambda item: item["uncertaintyMs"])
+            await control("clock-set", **translation)
+            measured.clock_offset_ms = translation["offsetMs"]
             for item in inputs:
                 await control("source-start", source=item.source, startSample=0)
             packets = {item.source: list(frames(item.pcm, 0 if item.source == "mic" else 1)) for item in inputs}
             started = monotonic()
-            lag = await paced_send(socket, packets, measured)
+            lag = await paced_send(socket, packets, measured, timed=True)
             for item in inputs:
                 padding = (-len(item.pcm) // 2) % 1600
                 await control("source-end", source=item.source, paddedSamples=padding)
@@ -211,7 +238,16 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
         if extra_stdout:
             raise RuntimeError("Unexpected sidecar stdout")
         result = measured.report()
-        return {"status": "DONE", "latency_kind": "client-receipt (server emission time unavailable; contract unchanged)",
+        diagnostic = json.loads(diagnostic_path.read_text(encoding="utf-8"))
+        measured.attach_sidecar_timing(diagnostic)
+        result["sidecar_diagnostics"] = diagnostic
+        result["sample_accounting"] = diagnostic["sample_accounting"]
+        result["accounting_status"] = "DONE" if diagnostic["sample_accounting"] and all(
+            source["unexplained_samples"] == 0 and source["pending_samples"] == 0
+            for source in diagnostic["sample_accounting"].values()) else "PARTIAL"
+        result["diagnostics_status"] = "DONE" if not diagnostic["omitted_diagnostic_rows"] and not result["omitted_event_rows"] else "PARTIAL"
+        return {"status": "DONE", "run_id": session_id, "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+            "sample_rate": 16000, "replay_speed": 1.0, "protocol_version": 2, "clock_translation": translation, "latency_kind": "simulated replay capture-to-client receipt and legacy matched-reference estimates",
             "alignment_kind": "offline model-aligned estimates, not human ground truth", "elapsed_seconds": elapsed,
             "replay_maximum_lag_ms": max(lag), "child_exit_code": process.returncode,
             "child_stderr_bytes": stderr, "leading_silence_seconds": leading, "trailing_silence_seconds": trailing,
@@ -228,6 +264,7 @@ async def replay(inputs, references, *, model="base.en", language="en", leading=
         if not stderr_task.done():
             stderr_task.cancel()
         await asyncio.gather(stderr_task, return_exceptions=True)
+        diagnostic_dir.cleanup()
 
 
 def main():
@@ -235,7 +272,8 @@ def main():
     parser.add_argument("--mic", type=Path)
     parser.add_argument("--system", type=Path)
     parser.add_argument("--report", required=True, type=Path)
-    parser.add_argument("--model", choices=("base.en", "small"), default="base.en")
+    parser.add_argument("--model", choices=("base.en", "small", "tiny.en"), default="base.en")
+    parser.add_argument("--reference-model", choices=("base.en", "small", "tiny.en"), default="base.en")
     parser.add_argument("--language", default="en")
     parser.add_argument("--reference", type=Path, help="Private word-aligned JSON; omitted uses an isolated offline alignment process")
     args = parser.parse_args()
@@ -250,19 +288,31 @@ def main():
             raw = json.loads(args.reference.read_text(encoding="utf-8"))
             references = {source: [Word(w["text"], w["startSample"], w["endSample"]) for w in raw[source]] for source in paths}
         else:
-            references = model_alignment(paths, args.model, args.language)
+            references = model_alignment(paths, args.reference_model, args.language)
         # Inputs contain two seconds of known silence before the original WAV.
         references = {source: [Word(w.text, w.start + 32000, w.end + 32000) for w in words] for source, words in references.items()}
         result = asyncio.run(replay(inputs, references, model=args.model, language=args.language))
         if args.reference:
             result["alignment_kind"] = "user-supplied reference; alignment quality depends on its annotations"
+        result["reference_model"] = None if args.reference else args.reference_model
         result["environment"] = {"python": platform.python_version(), "processor": platform.processor(),
             "logical_cpus": psutil.cpu_count(), "physical_cpus": psutil.cpu_count(logical=False),
             "ram_gib": psutil.virtual_memory().total / 1024 ** 3,
             "versions": {name: version(name) for name in ("faster-whisper", "ctranslate2", "onnxruntime", "websockets")}}
         result["configuration"] = {"model": args.model, "language": args.language, "cpu_threads": int(os.environ.get("VINXA_CPU_THREADS", "4")),
             "beam_size": int(os.environ.get("VINXA_BEAM_SIZE", "1")), "interval_seconds": float(os.environ.get("VINXA_STREAM_INTERVAL_SECONDS", "1")),
-            "window_seconds": float(os.environ.get("VINXA_STREAM_WINDOW_SECONDS", "6"))}
+            "window_seconds": float(os.environ.get("VINXA_STREAM_WINDOW_SECONDS", "6")), "short_encoder": False,
+            "plain_decode": False}
+        battery = psutil.sensors_battery()
+        result["environment"]["power_plugged_reported_by_os"] = battery.power_plugged if battery else None
+        for source in result["sources"].values():
+            partial, final = source["capture_to_partial_ms"], source["capture_to_final_ms"]
+            source["targets"] = {"partial_median_met": partial["median_ms"] is not None and partial["median_ms"] <= 2000,
+                                 "partial_p95_met": partial["p95_ms"] is not None and partial["p95_ms"] <= 3000,
+                                 "final_p95_met": final["p95_ms"] is not None and final["p95_ms"] <= 5000,
+                                 "clock_consistent": source["negative_capture_estimates"] == 0}
+        result["performance_status"] = "DONE" if result["accounting_status"] == "DONE" and not result["reported_dropped_samples"] and all(
+            all(source["targets"].values()) for source in result["sources"].values()) else "PARTIAL"
         with args.report.open("x", encoding="utf-8") as output:
             json.dump(result, output, indent=2, allow_nan=False)
             output.write("\n")

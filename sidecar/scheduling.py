@@ -14,6 +14,7 @@ class FairQueue:
         self.cursor = 0
         self.wake = asyncio.Event()
         self.closed = False
+        self.observe = lambda stage, job: None
 
     @property
     def depth(self):
@@ -25,17 +26,28 @@ class FairQueue:
         queue = self.pending[job.source]
         for index, old in enumerate(queue):
             if old.key == job.key and not old.final:
+                if (job.final and getattr(getattr(old, "utterance", None), "live_passes", 1) == 0
+                        and len(queue) < self.limit):
+                    queue.append(job)
+                    self.observe("queue_enqueued", job)
+                    self.wake.set()
+                    return True
+                self.observe("queue_replaced", old)
                 queue[index] = job
+                self.observe("queue_enqueued", job)
                 self.wake.set()
                 return True
         if len(queue) >= self.limit:
             for index, old in enumerate(queue):
                 if not old.final:
+                    self.observe("queue_evicted", old)
                     del queue[index]
                     break
             else:
+                self.observe("queue_rejected", job)
                 return False
         queue.append(job)
+        self.observe("queue_enqueued", job)
         self.wake.set()
         return True
 
@@ -46,7 +58,9 @@ class FairQueue:
                 queue = self.pending[self.sources[index]]
                 if queue:
                     self.cursor = (index + 1) % len(self.sources)
-                    return queue.popleft()
+                    job = queue.popleft()
+                    self.observe("queue_dequeued", job)
+                    return job
             self.wake.clear()
             await self.wake.wait()
         return None
@@ -54,6 +68,8 @@ class FairQueue:
     def clear(self, source=None):
         for name, queue in self.pending.items():
             if source is None or source == name:
+                for job in queue:
+                    self.observe("queue_cleared", job)
                 queue.clear()
 
     def close(self):

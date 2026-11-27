@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules() })
 
-async function processor(source = 0, micGain?: number): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
+async function processor(source = 0, micGain?: number, diagnostics = false, timed = false): Promise<{ port: { onmessage: (event: { data: unknown }) => void }; process(inputs: Float32Array[][]): boolean; messages: any[] }> {
   vi.resetModules()
   const messages: any[] = []
   let Constructor: any
@@ -16,10 +16,42 @@ async function processor(source = 0, micGain?: number): Promise<{ port: { onmess
   vi.stubGlobal('sampleRate', 48000)
   vi.stubGlobal('registerProcessor', (_name: string, constructor: any) => { Constructor = constructor })
   await import('./worklet')
-  return Object.assign(new Constructor({ processorOptions: { source, micGain } }), { messages })
+  return Object.assign(new Constructor({ processorOptions: { source, micGain, diagnostics, timed } }), { messages })
 }
 
 describe('AudioWorklet lifecycle', () => {
+  it('emits acquisition estimates on the audio sample clock with monotonic sequences', async () => {
+    const worklet = await processor(1, undefined, false, true)
+    for (let index = 0; index < 80; index++) {
+      vi.stubGlobal('currentFrame', index * 128)
+      worklet.process([[new Float32Array(128).fill(0.2)]])
+    }
+    worklet.port.onmessage({ data: { type: 'stop' } })
+    const frames = worklet.messages.filter((message) => message.type === 'frame')
+    expect(frames.map((message) => message.timing.sequence)).toEqual([0, 1, 2])
+    expect(frames.map((message) => message.timing.audioTime)).toEqual([0, 0.1, 0.2])
+    expect(frames.every((message) => message.timing.sampleCount === 1600 && message.timing.errorMs > 0)).toBe(true)
+  })
+
+  it('reports an audio graph clock discontinuity instead of compressing the timeline', async () => {
+    const worklet = await processor(0, undefined, false, true)
+    vi.stubGlobal('currentFrame', 0)
+    expect(worklet.process([[new Float32Array(128)]])).toBe(true)
+    vi.stubGlobal('currentFrame', 256)
+    expect(worklet.process([[new Float32Array(128)]])).toBe(false)
+    expect(worklet.messages.at(-1).type).toBe('error')
+  })
+
+  it('preserves diagnostic sequence through transferred frames and includes the padded tail', async () => {
+    const worklet = await processor(1, undefined, true)
+    for (let i = 0; i < 80; i++) worklet.process([[new Float32Array(128).fill(0.2)]])
+    worklet.port.onmessage({ data: { type: 'stop' } })
+    const frames = worklet.messages.filter((message) => message.type === 'frame')
+    expect(frames.map((message) => message.diagnostics.sequence)).toEqual([0, 1, 2])
+    expect(frames.map((message) => message.diagnostics.producedSamples)).toEqual([1600, 3200, 4800])
+    expect(worklet.messages.at(-1).diagnostics.producedFrames).toBe(3)
+    expect(frames.every((message) => message.frame.byteLength === 3201 && new Uint8Array(message.frame)[0] === 1)).toBe(true)
+  })
   it('uses conservative microphone gain and emits upstream level evidence on stop', async () => {
     const worklet = await processor()
     for (let i = 0; i < 40; i++) worklet.process([[new Float32Array(128).fill(1)]])

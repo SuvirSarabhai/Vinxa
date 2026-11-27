@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
 import { join } from 'node:path'
+import { getAppSpeech, initializeAppSpeech } from './speech-service'
 import { FixturePlayer } from './fixture-player'
 import { ipcChannels } from '../shared/ipc-channels'
 import { fixtureCommandSchema } from '../shared/schemas'
@@ -73,11 +74,14 @@ if (!hasLock) {
 } else {
   app.on('second-instance', openLibrary)
   app.on('before-quit', (event) => {
-    if (!isQuitting && captureTest) {
+    if (!isQuitting && (captureTest || getAppSpeech())) {
       event.preventDefault()
       isQuitting = true
       fixturePlayer?.stop()
-      void captureTest.stop().finally(() => app.quit())
+      void (async () => {
+        try { await captureTest?.stop() }
+        finally { await getAppSpeech()?.shutdown() }
+      })().catch(() => console.error('Local speech shutdown did not finish normally')).finally(() => app.quit())
       return
     }
     isQuitting = true
@@ -86,6 +90,7 @@ if (!hasLock) {
   app.whenReady().then(() => {
     createTray()
     createMainWindow()
+    if (mainWindow) void initializeAppSpeech(mainWindow)
     fixturePlayer = new FixturePlayer(
       (segment) => mainWindow?.webContents.send(ipcChannels.transcriptSegment, segment),
       (status) => mainWindow?.webContents.send(ipcChannels.fixtureStatus, status)

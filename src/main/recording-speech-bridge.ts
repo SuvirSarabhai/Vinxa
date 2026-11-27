@@ -1,10 +1,14 @@
 import type { App, BrowserWindow } from 'electron'
 import type { AudioFrameMetadata, AudioSourceName, RecordingState, TranscriptSegment } from '../shared/contracts'
 import { sourceIds } from '../shared/contracts'
+import { speechDiagnostics } from './speech-diagnostics'
 import { ipcChannels } from '../shared/ipc-channels'
 import { validatePcmFrame } from '../shared/pcm'
 import { SidecarManager, SidecarOperationError } from './sidecar-manager'
 import type { SidecarRuntime, SidecarSession } from './sidecar-manager'
+
+let warmBridgeFactory: ((owner: RecordingOwner, window: Pick<BrowserWindow, 'isDestroyed' | 'webContents'>) => RecordingSpeechBridge) | undefined
+export function setWarmBridgeFactory(factory: typeof warmBridgeFactory): void { warmBridgeFactory = factory }
 
 export interface RecordingOwner {
   getState(): RecordingState
@@ -34,8 +38,15 @@ export class RecordingSpeechBridge {
   }
 
   frame(sessionId: string, source: AudioSourceName, pcm: Uint8Array, metadata?: AudioFrameMetadata): boolean {
-    if (this.session?.sessionId !== sessionId || !this.owner.hasConsent(sessionId) || this.owner.getState() !== 'recording') return false
-    if (!metadata) throw new SidecarOperationError('Live audio requires measured session sample timing')
+    speechDiagnostics.record('bridge_received', source, pcm.byteLength / 2)
+    if (this.session?.sessionId !== sessionId || !this.owner.hasConsent(sessionId) || this.owner.getState() !== 'recording') {
+      speechDiagnostics.record('bridge_rejected_authorization', source, pcm.byteLength / 2)
+      return false
+    }
+    if (!metadata) {
+      speechDiagnostics.record('bridge_rejected_missing_timing', source, pcm.byteLength / 2)
+      throw new SidecarOperationError('Live audio requires measured session sample timing')
+    }
     return this.manager.sendFrame(source, pcm, metadata)
   }
 
@@ -81,6 +92,7 @@ export class RecordingSpeechBridge {
 /** Publish through the existing IPC and preload subscriptions, without new UI handlers. */
 export function createRecordingSpeechBridge(owner: RecordingOwner, runtime: SidecarRuntime,
   window: Pick<BrowserWindow, 'isDestroyed' | 'webContents'>): RecordingSpeechBridge {
+  if (warmBridgeFactory) return warmBridgeFactory(owner, window)
   let bridge: RecordingSpeechBridge
   const send = (channel: string, payload: unknown): void => { if (!window.isDestroyed()) window.webContents.send(channel, payload) }
   const manager = new SidecarManager({ runtime,

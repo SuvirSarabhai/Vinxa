@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import json
 import math
+import struct
 from pathlib import Path
 
 from jsonschema import Draft202012Validator, FormatChecker
@@ -74,9 +75,35 @@ def parse_json(message: object, kind: str) -> dict:
 class AudioFrame:
     source: str
     pcm: bytes
+    metadata: dict | None = None
 
 
-def parse_frame(message: object, enabled_sources) -> AudioFrame:
+TIMED_HEADER = struct.Struct("<2sBBIdddIdI")
+
+
+def pack_timed_frame(source_id, pcm, sequence, start_sample, capture_ms, sent_ms, uncertainty_ms=0):
+    if source_id not in SOURCE_NAMES or len(pcm) != 3200:
+        raise ProtocolError("INVALID_FRAME", "Invalid timed audio frame")
+    return TIMED_HEADER.pack(b"VX", 2, source_id, sequence, start_sample, capture_ms,
+                             sent_ms, 1600, uncertainty_ms, 0) + pcm
+
+
+def parse_frame(message: object, enabled_sources, protocol_version=1) -> AudioFrame:
+    if protocol_version == 2:
+        if not isinstance(message, bytes) or len(message) != TIMED_HEADER.size + 3200:
+            raise ProtocolError("INVALID_FRAME", "Expected a timed header and 3200 PCM bytes")
+        magic, version, source_id, sequence, start, capture, sent, count, uncertainty, flags = TIMED_HEADER.unpack_from(message)
+        if (magic != b"VX" or version != 2 or flags not in (0, 1) or count != 1600 or
+                not all(math.isfinite(v) for v in (start, capture, sent, uncertainty)) or
+                start < 0 or start > 9007199254740991 or int(start) != start or uncertainty < 0):
+            raise ProtocolError("INVALID_FRAME", "Invalid timed audio header")
+        source = SOURCE_NAMES.get(source_id)
+        if source is None or source not in enabled_sources:
+            raise ProtocolError("SOURCE_DISABLED", "Audio source is unavailable")
+        metadata = {"sequence": sequence, "startSample": int(start), "captureTimeMs": capture,
+                    "sentMs": sent, "sampleCount": count, "captureErrorMs": uncertainty,
+                    "captureKind": "render-estimate" if flags & 1 else "replay"}
+        return AudioFrame(source, message[TIMED_HEADER.size:], metadata)
     if not isinstance(message, bytes) or len(message) != PCM["frameBytes"] + 1:
         raise ProtocolError("INVALID_FRAME", "Expected a source byte and exactly 3200 PCM bytes")
     source = SOURCE_NAMES.get(message[0])

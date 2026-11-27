@@ -48,6 +48,28 @@ function setup(source = 'mic') {
 }
 
 describe('hidden microphone capture lifecycle', () => {
+  it('translates worklet sample timing into the main clock and preserves it through IPC calls', async () => {
+    const test = setup()
+    window.vinxaCapture.clockSync = vi.fn(async (sent) => ({ mainReceiveMs: sent + 1000,
+      mainSendMs: sent + 1000, sessionStartMs: 0 }))
+    Object.defineProperty(AudioContext.prototype, 'currentTime', { configurable: true, value: 0 })
+    await import('./capture')
+    await vi.waitFor(() => expect(window.vinxaCapture.ready).toHaveBeenCalled())
+    expect(window.vinxaCapture.clockSync).toHaveBeenCalledTimes(3)
+    expect(test.node().options.processorOptions.timed).toBe(true)
+    for (let sequence = 0; sequence < 2; sequence++) test.node().port.onmessage({ data: {
+      type: 'frame', frame: new ArrayBuffer(3201), timing: { sequence, audioTime: sequence / 10,
+        sampleCount: 1600, errorMs: 5 }
+    } })
+    await vi.waitFor(() => expect(window.vinxaCapture.frame).toHaveBeenCalledTimes(2))
+    const calls = vi.mocked(window.vinxaCapture.frame).mock.calls
+    expect(calls[0][1]).toMatchObject({ sequence: 0, sampleCount: 1600, captureKind: 'render-estimate' })
+    expect(calls[1][1]!.startSample - calls[0][1]!.startSample).toBe(1600)
+    expect(calls[1][1]!.captureTimeMs! - calls[0][1]!.captureTimeMs!).toBeCloseTo(100)
+    expect(calls[0][1]!.captureErrorMs).toBeGreaterThanOrEqual(5)
+    test.stop()
+    await vi.waitFor(() => expect(test.finished).toHaveBeenCalled())
+  })
   it('passes configured gain to mic worklet and ignores it for system capture', async () => {
     const test = setup('mic&micGain=0.5')
     await import('./capture')
