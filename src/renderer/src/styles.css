@@ -1,48 +1,53 @@
 :root {
   color: #f5f7fb;
   background: #101319;
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: "Segoe UI", sans-serif;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
-
 body { margin: 0; }
-
-.shell {
-  display: grid;
-  min-height: 100vh;
-  align-content: center;
-  max-width: 1040px;
-  padding: 48px;
-  margin: 0 auto;
-}
-
-.eyebrow {
-  color: #a7b1c5;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-}
-
-h1 { font-size: clamp(2.5rem, 5vw, 3.5rem); margin: 1.5rem 0 0; }
-
-.copy { color: #c2cad9; font-size: 1.1rem; line-height: 1.6; max-width: 52ch; }
-
-header, .toolbar, .segment-meta, .controls { display: flex; align-items: center; gap: 16px; }
-header, .toolbar { justify-content: space-between; }
-.badge { border: 1px solid #375950; border-radius: 20px; padding: 6px 12px; color: #9be4c7; font-size: 0.8rem; }
-.panel { margin-top: 24px; padding: 24px; border: 1px solid #303949; border-radius: 16px; background: #181e28; }
-h2 { font-size: 1.1rem; margin: 0; }
-.toolbar { margin-bottom: 20px; }
-.toolbar span, .muted, .segment-meta, footer { color: #a7b1c5; }
-button { font: inherit; border: 1px solid #536a88; background: #263951; color: #f5f7fb; border-radius: 8px; padding: 10px 16px; cursor: pointer; }
+button, input, select { font: inherit; -webkit-app-region: no-drag; }
+.shell { width: min(100%, 1040px); margin: 0 auto; padding: 36px; }
+.setup { max-width: 620px; }
+h1 { margin: 16px 0; font-size: clamp(2rem, 4vw, 3rem); }
+h2 { margin: 0 0 16px; font-size: 1.1rem; }
+.eyebrow { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.12em; color: #a7b1c5; }
+.muted, footer, small { color: #a7b1c5; }
+p, footer { line-height: 1.6; }
+.panel { margin-top: 24px; padding: 24px; background: #181e28; border: 1px solid #303949; border-radius: 14px; }
+.toolbar, .controls, .segment-meta, .overlay-tools { display: flex; align-items: center; gap: 12px; }
+.toolbar, .overlay-tools { justify-content: space-between; }
+.controls { flex-wrap: wrap; margin: 16px 0; }
+button { padding: 10px 14px; background: #263951; border: 1px solid #536a88; border-radius: 8px; color: #f5f7fb; cursor: pointer; }
 button:disabled { opacity: 0.45; cursor: default; }
-button:focus-visible { outline: 2px solid #9be4c7; outline-offset: 4px; }
-.transcript { height: 260px; overflow-y: auto; margin-top: 24px; }
-.segment { padding: 12px 0; border-bottom: 1px solid #303949; }
-.segment-meta { font-size: 0.8rem; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid #9be4c7; outline-offset: 3px; }
+.field { display: grid; gap: 8px; margin: 18px 0; }
+input:not([type="checkbox"]):not([type="range"]), select { width: 100%; padding: 10px; border: 1px solid #536a88; border-radius: 8px; background: #101319; color: #f5f7fb; }
+.check { display: flex; align-items: flex-start; gap: 10px; margin: 18px 0; line-height: 1.5; }
+.check input { margin-top: 5px; }
+.consent { padding: 14px 0; }
+.notice { color: #b9d4ff; }
+.error, [role="alert"] { color: #ffb4b4; }
+.error { padding: 0 24px; }
+.status { padding: 6px 10px; border: 1px solid #536a88; border-radius: 20px; font-size: 0.8rem; white-space: nowrap; }
+.status.recording, .status.stopping { color: #ffb4b4; border-color: #ef4444; }
+.status.paused { color: #ffd58a; border-color: #f59e0b; }
+.levels { display: flex; flex-wrap: wrap; gap: 24px; margin-top: 20px; }
+.level { display: grid; gap: 8px; min-width: 200px; }
+meter { width: 100%; }
+.transcript { max-height: 360px; overflow-y: auto; margin-top: 20px; }
+.segment { padding: 14px 0; border-bottom: 1px solid #303949; }
+.segment-meta { font-size: 0.8rem; color: #a7b1c5; }
 .segment-meta strong { color: #9be4c7; }
-.segment p { margin: 8px 0; line-height: 1.5; }
+.segment p { margin: 8px 0; }
 .partial p { color: #a7b1c5; font-style: italic; }
-footer { font-size: 0.85rem; line-height: 1.6; margin-top: 24px; }
-
+.pause-gap { color: #ffd58a; font-size: 0.85rem; }
+.overlay-shell { min-height: 100vh; background: #181e28; cursor: grab; user-select: none; }
+.overlay-shell input, .overlay-shell textarea { user-select: text; }
+.overlay-drag { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px; background: #101319; }
+.overlay-body { padding: 16px; }
+.overlay-body .transcript { max-height: 240px; }
+.overlay-tools { flex-wrap: wrap; }
+footer { margin: 24px 0; font-size: 0.85rem; }
+@media (max-width: 600px) { .shell { padding: 24px; } }

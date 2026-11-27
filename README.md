@@ -6,8 +6,16 @@ The product is built for a short hackathon sprint. The first objective is a reli
 
 ## Product principles
 
+Current implementation: Developer A's Phase 2 code adds the consent/setup window,
+global hotkeys, recording state controller, and floating transcript overlay using
+a clearly labelled demo backend. Developer B's separate real-audio WAV diagnostics
+and offline WAV transcription engine are also available. The live audio-to-overlay
+connection, saved meeting history, and AI notes are not connected yet. See
+[Phase 2 files and testing guide](docs/phase-2.md).
+The native main-window X-button issue remains parked; use the tray's Quit action.
+
 - **Local-only by default.** Audio, transcripts, and search stay on the laptop. Cloud notes are an explicit opt-in and receive transcript text, never audio.
-- **Two separate audio streams.** Microphone is labelled **You** and WASAPI loopback is labelled **Remote**. The streams are not blindly mixed, which prevents echo duplicates.
+- **Two separate audio streams.** Microphone is labelled **You** and WASAPI loopback is labelled **Remote**. Echo deduplication is planned for Phase 3.
 - **Consent is enforced.** Recording cannot begin until the user confirms consent. The overlay, tray, and taskbar show a persistent recording state.
 - **Evidence over invention.** Notes use schema validation; unknown owners and dates are `null`, not guesses.
 
@@ -15,23 +23,27 @@ The product is built for a short hackathon sprint. The first objective is a reli
 
 ```text
 Windows microphone + WASAPI loopback
-        â”‚
-        â–¼
+        |
+        v
 Electron hidden capture window
-getUserMedia + getDisplayMedia â†’ AudioWorklet (16 kHz mono PCM)
-        â”‚ localhost WebSocket, session token
-        â–¼
+getUserMedia + getDisplayMedia -> AudioWorklet (16 kHz mono PCM)
+        | localhost WebSocket, session token
+        v
 Python sidecar
-VAD â†’ faster-whisper â†’ partial/final transcript events
-        â”‚
-        â–¼
+VAD -> faster-whisper -> partial/final transcript events
+        |
+        v
 Electron main process
-state machine â†’ SQLite/FTS5 â†’ local audio spool â†’ exports
-        â”‚
-        â–¼
+state machine -> SQLite/FTS5 -> local audio spool -> exports
+        |
+        v
 React overlay and library
 live transcript, search, insights, consent, settings
 ```
+
+This is the target architecture. The merged code currently has separate audio
+WAV diagnostics, an offline WAV speech engine, and the Phase 2 demo UI. The live
+localhost streaming connection is not implemented yet.
 
 ## Technology stack
 
@@ -78,11 +90,9 @@ docs/          PRD, architecture, privacy, and test-result documentation.
 
 ## Local setup
 
-Phase 1 Developer A work needs Node.js and pnpm only. The Python setup below is
-needed when running Developer B's speech sidecar or harness. Current status: the
-tray shell, contracts, sample transcript player, opt-in mic/system WAV diagnostics
-and independent offline Python WAV transcription are implemented. The live
-capture-to-transcript connection, saved meetings and AI notes are later work.
+Developer A's current demo work needs Node.js and pnpm only. The Python setup below
+is needed when running Developer B's offline speech engine or harness. Real-audio
+diagnostics are opt-in and separate from the default Phase 2 demo UI.
 
 ```powershell
 pnpm install
@@ -93,14 +103,17 @@ Copy-Item .env.example .env
 pnpm dev
 ```
 
-For the current desktop shell, run `pnpm install` and `pnpm dev`. Click Play sample
-to replay written transcript fixtures. Closing the window hides it in the tray;
-Open Library restores it and Quit exits. Recording tray controls are disabled until
-Phase 2. `pnpm dev` currently starts Electron only, without a Python sidecar.
+For the current desktop shell, run `pnpm install` and `pnpm dev`. Start demo opens
+setup and requires explicit consent before replaying written transcript fixtures.
+The floating overlay supports pause/resume/stop, collapse, opacity, and copying
+recent lines. Open Library restores the main window and Quit exits. Global hotkeys
+default to Ctrl+Alt+S, Ctrl+Alt+P, and Ctrl+Alt+X and can be changed in Settings.
+`pnpm dev` starts Electron only, without a Python sidecar. Audio meters intentionally
+remain unavailable in demo mode.
 
 Use `pnpm icons` to regenerate the temporary application/tray icon. `pnpm package:win`
 builds an unsigned NSIS installer and portable executable under `release/`.
-The current package contains the Phase 1 shell; sidecar/model packaging will be
+After rebuilding, the package contains the Phase 2 demo shell; sidecar/model packaging will be
 added when Developer B supplies those artifacts. See [Phase 1 contracts](docs/phase-1-contracts.md)
 for the integration proposal and completion checks.
 
@@ -109,6 +122,8 @@ before `pnpm dev`, then confirm the native recording prompt. It saves
 `test_recordings/mic.wav` and stops after 30 seconds or when Stop recording is clicked.
 Run `node scripts/validate-wav.mjs test_recordings/mic.wav` to check the result.
 See [microphone capture status and test steps](docs/phase1-audio-capture.md).
+Diagnostic mode opens a dedicated screen and does not enable the demo controls
+or global hotkeys. Clear `VINXA_CAPTURE_TEST` before returning to the normal demo.
 
 For the Python Phase 1 environment and offline benchmark commands, follow
 [Developer B setup](README-developer-b.md). The measured English baseline is
@@ -137,7 +152,11 @@ and use headphones for the simultaneous test. No video is saved.
 
 ## Privacy and data handling
 
-The default **Local-only** mode blocks non-localhost network requests. When a user enables cloud notes, only finalized transcript text may be sent to the selected provider. Recordings are stored outside the repository in the user data directory. Deleting a meeting must remove its audio, transcript, notes, FTS entries, bookmarks, and temporary files before it disappears from the interface. Exported copies and information already sent to an opted-in cloud provider are outside local deletion.
+The normal UI replays written fixtures without capturing audio or starting Python.
+Consent receipts and hotkey settings are stored in Electron's user-data directory.
+The opt-in Phase 1 diagnostics save WAV files separately, and the offline WAV
+engine can transcribe those files. Live transcription, persistent meeting history,
+the network guard, deletion, and optional cloud notes remain later work.
 
 ## Delivery order
 

@@ -1,21 +1,42 @@
 import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
 import { join } from 'node:path'
 import { FixturePlayer } from './fixture-player'
+import { installPhase2 } from './phase2'
 import { ipcChannels } from '../shared/ipc-channels'
 import { fixtureCommandSchema } from '../shared/schemas'
 import { startCaptureTest } from './audio/capture-test'
+import type { CaptureTestMode } from './audio/capture-test'
 
 let mainWindow: BrowserWindow | undefined
 let tray: Tray | undefined
 let isQuitting = false
+let hideRequested = false
 let fixturePlayer: FixturePlayer | undefined
 let captureTest: Awaited<ReturnType<typeof startCaptureTest>>
+let removeNativeCloseHooks: (() => void) | undefined
+let disposePhase2: (() => void) | undefined
+const requestedCaptureMode = process.env.VINXA_CAPTURE_TEST
+const captureMode: CaptureTestMode | undefined = requestedCaptureMode === 'mic' || requestedCaptureMode === 'system' || requestedCaptureMode === 'both'
+  ? requestedCaptureMode : undefined
 
 function openLibrary(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
+  hideRequested = false
+  mainWindow.setSkipTaskbar(false)
   if (mainWindow.isMinimized()) mainWindow.restore()
   mainWindow.show()
   mainWindow.focus()
+}
+
+function hideLibrary(): void {
+  if (isQuitting || hideRequested) return
+  hideRequested = true
+  const window = mainWindow
+  setImmediate(() => {
+    if (!hideRequested || isQuitting || !window || window.isDestroyed()) return
+    window.hide()
+    window.setSkipTaskbar(true)
+  })
 }
 
 function createTray(): void {
@@ -42,6 +63,7 @@ function createMainWindow(): void {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    closable: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -50,20 +72,44 @@ function createMainWindow(): void {
     }
   })
 
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
-  mainWindow.on('close', (event) => {
-    if (!isQuitting) {
-      event.preventDefault()
-      mainWindow?.hide()
-    }
+  mainWindow.once('ready-to-show', () => {
+    if (!hideRequested && !isQuitting) mainWindow?.show()
   })
+  mainWindow.on('close', (event) => {
+    if (isQuitting) return
+    event.preventDefault()
+    hideLibrary()
+  })
+  if (process.platform === 'win32') {
+    const WM_CLOSE = 0x0010
+    const WM_SYSCOMMAND = 0x0112
+    const WM_NCLBUTTONUP = 0x00a2
+    const SC_CLOSE = 0xf060
+    const HTCLOSE = 20
+    mainWindow.hookWindowMessage(WM_CLOSE, hideLibrary)
+    mainWindow.hookWindowMessage(WM_SYSCOMMAND, (command) => {
+      if ((command.readUInt32LE(0) & 0xfff0) === SC_CLOSE) hideLibrary()
+    })
+    mainWindow.hookWindowMessage(WM_NCLBUTTONUP, (hitTest) => {
+      if (hitTest.readUInt32LE(0) === HTCLOSE) hideLibrary()
+    })
+    const window = mainWindow
+    removeNativeCloseHooks = () => {
+      if (window.isDestroyed()) return
+      for (const message of [WM_CLOSE, WM_SYSCOMMAND, WM_NCLBUTTONUP]) {
+        window.unhookWindowMessage(message)
+      }
+    }
+  }
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault())
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+    const url = new URL(process.env.ELECTRON_RENDERER_URL)
+    if (captureMode) url.hash = 'capture-test'
+    void mainWindow.loadURL(url.toString())
   } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'), captureMode ? { hash: 'capture-test' } : undefined)
   }
 }
 
@@ -73,15 +119,15 @@ if (!hasLock) {
 } else {
   app.on('second-instance', openLibrary)
   app.on('before-quit', (event) => {
-    if (!isQuitting && captureTest) {
-      event.preventDefault()
-      isQuitting = true
-      fixturePlayer?.stop()
-      void captureTest.stop().finally(() => app.quit())
-      return
-    }
+    if (isQuitting) return
     isQuitting = true
+    disposePhase2?.()
+    removeNativeCloseHooks?.()
     fixturePlayer?.stop()
+    if (captureTest) {
+      event.preventDefault()
+      void captureTest.stop().finally(() => app.quit())
+    }
   })
   app.whenReady().then(() => {
     createTray()
@@ -98,12 +144,17 @@ if (!hasLock) {
       else fixturePlayer?.stop()
     })
     mainWindow?.webContents.on('did-start-loading', () => fixturePlayer?.stop())
-    app.on('activate', openLibrary)
-    const mode = process.env.VINXA_CAPTURE_TEST
-    if ((mode === 'mic' || mode === 'system' || mode === 'both') && mainWindow) {
-      void startCaptureTest(mainWindow, mode).then((test) => { captureTest = test }).catch(() => {
+    app.on('activate', () => {
+      if (!hideRequested) openLibrary()
+    })
+    if (!mainWindow || !tray) throw new Error('Desktop shell was not initialized')
+    if (captureMode) {
+      tray.setToolTip('Vinxa — Audio diagnostic mode')
+      void startCaptureTest(mainWindow, captureMode).then((test) => { captureTest = test }).catch(() => {
         console.error('Audio diagnostic could not start; check output file and disk space')
       })
+    } else {
+      disposePhase2 = installPhase2(mainWindow, tray, openLibrary)
     }
   }).catch((error: unknown) => {
     console.error('Vinxa startup failed', error)

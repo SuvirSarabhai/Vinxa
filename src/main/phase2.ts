@@ -1,0 +1,325 @@
+import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen } from 'electron'
+import type { Tray } from 'electron'
+import { appendFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
+import {
+  announcement, defaultHotkeys, demoAnnouncement, hotkeysSchema,
+  overlayDragSchema, phase2Channels, phase2CommandSchema
+} from '../shared/phase2'
+import type { Hotkeys, Phase2Command, Phase2Snapshot, RecordingBackend } from '../shared/phase2'
+import { SessionController } from './session-controller'
+import { ShortcutBindings } from './hotkeys'
+import { createDemoBackend } from './demo-backend'
+
+function statusIcon(red: number, green: number, blue: number): Electron.NativeImage {
+  const size = 16
+  const bitmap = Buffer.alloc(size * size * 4)
+  for (let vertical = 0; vertical < size; vertical += 1) {
+    for (let horizontal = 0; horizontal < size; horizontal += 1) {
+      if (Math.hypot(horizontal - 7.5, vertical - 7.5) > 6.5) continue
+      const offset = (vertical * size + horizontal) * 4
+      bitmap.set([blue, green, red, 255], offset)
+    }
+  }
+  return nativeImage.createFromBitmap(bitmap, { width: size, height: size })
+}
+
+export function installPhase2(
+  library: BrowserWindow,
+  tray: Tray,
+  openLibrary: () => void,
+  backend: RecordingBackend = createDemoBackend()
+): () => void {
+  let overlay: BrowserWindow | undefined
+  let setup: BrowserWindow | undefined
+  let disposed = false
+  let ready = false
+  let revision = 0
+  let expandedHeight = 500
+  let collapsed = false
+  let opacity = 0.95
+  let hotkeys: Hotkeys = { ...defaultHotkeys }
+  let hotkeyErrors: string[] = []
+  let commandError: string | null = null
+  let settingsBusy = false
+  let overlayWanted = false
+  let overlayLoaded = false
+  let dragOrigin: { cursorX: number; cursorY: number; windowX: number; windowY: number } | undefined
+  const userData = app.getPath('userData')
+  const settingsFile = join(userData, 'phase2-hotkeys.json')
+  const consentFile = join(userData, 'consent-events.jsonl')
+  const idleIcon = nativeImage.createFromPath(app.isPackaged
+    ? join(process.resourcesPath, 'tray.ico')
+    : join(app.getAppPath(), 'resources', 'tray.ico'))
+  const redIcon = statusIcon(239, 68, 68)
+  const amberIcon = statusIcon(245, 158, 11)
+  const controller = new SessionController(backend, async (record) => {
+    await mkdir(userData, { recursive: true })
+    await appendFile(consentFile, JSON.stringify(record) + '\n', 'utf8')
+  })
+  const shortcuts = new ShortcutBindings(globalShortcut, (action) => {
+    const commands: Record<keyof Hotkeys, Phase2Command> = {
+      start: { type: 'start' }, pause: { type: 'pause-resume' }, stop: { type: 'stop' }
+    }
+    run(commands[action])
+  })
+
+  function windows(): BrowserWindow[] {
+    return [library, overlay, setup].filter((window): window is BrowserWindow => Boolean(window && !window.isDestroyed()))
+  }
+
+  function snapshot(): Phase2Snapshot {
+    const session = controller.snapshot()
+    return {
+      ...session, error: commandError ?? session.error, busy: session.busy || settingsBusy,
+      revision, ready, hotkeys: { ...hotkeys }, activeHotkeys: shortcuts.active(),
+      hotkeyErrors: [...hotkeyErrors], collapsed, opacity
+    }
+  }
+
+  function publish(): void {
+    if (disposed) return
+    revision += 1
+    const value = snapshot()
+    const active = value.state === 'recording' || value.state === 'paused'
+    const capturing = value.state === 'recording' || value.state === 'stopping'
+    const badge = value.state === 'paused' ? amberIcon : capturing ? redIcon : null
+    tray.setImage(badge ?? idleIcon)
+    tray.setToolTip(`Vinxa ${value.mode === 'demo' ? 'Demo ' : ''}— ${value.state}`)
+    for (const window of windows()) {
+      window.setOverlayIcon(badge, `${value.mode}: ${value.state}`)
+      if (!window.webContents.isDestroyed()) window.webContents.send(phase2Channels.changed, value)
+    }
+    tray.setContextMenu(Menu.buildFromTemplate([
+      { label: 'Start', enabled: ready && !value.busy && ['idle', 'completed', 'error'].includes(value.state), click: () => run({ type: 'start' }) },
+      { label: value.state === 'paused' ? 'Resume' : 'Pause', enabled: active && !value.busy, click: () => run({ type: 'pause-resume' }) },
+      { label: 'Stop', enabled: ready && (active || value.state === 'awaiting-consent'), click: () => run({ type: 'stop' }) },
+      { type: 'separator' },
+      { label: 'Show Overlay', enabled: ready, click: () => run({ type: 'show-overlay' }) },
+      { label: 'Open Library / Settings', click: openLibrary },
+      { label: 'Quit', click: () => app.quit() }
+    ]))
+  }
+
+  function createWindow(route: string, options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
+    const window = new BrowserWindow({
+      show: false, backgroundColor: '#101319', ...options,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: join(__dirname, '../preload/index.js') }
+    })
+    window.on('page-title-updated', (event) => event.preventDefault())
+    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    window.webContents.on('will-navigate', (event) => event.preventDefault())
+    const loading = process.env.ELECTRON_RENDERER_URL
+      ? window.loadURL((() => {
+          const url = new URL(process.env.ELECTRON_RENDERER_URL)
+          url.hash = route
+          return url.toString()
+        })())
+      : window.loadFile(join(__dirname, '../renderer/index.html'), { hash: route })
+    void loading.catch(() => {
+      if (disposed) return
+      commandError = `The ${route} window could not load. Restart Vinxa.`
+      publish()
+    })
+    return window
+  }
+
+  function overlaySize(): void {
+    if (!overlay || overlay.isDestroyed()) return
+    overlay.setMinimumSize(440, collapsed ? 130 : 360)
+    overlay.setSize(overlay.getBounds().width, collapsed ? 130 : expandedHeight)
+  }
+
+  function showOverlay(): void {
+    overlayWanted = true
+    if (overlay && !overlay.isDestroyed()) {
+      if (overlayLoaded) overlay.show()
+      return
+    }
+    overlayLoaded = false
+    overlay = createWindow('overlay', {
+      title: 'Vinxa Transcript', width: 600, height: collapsed ? 130 : expandedHeight,
+      minWidth: 440, minHeight: collapsed ? 130 : 360,
+      frame: false, alwaysOnTop: true, resizable: true, minimizable: false, maximizable: false
+    })
+    overlay.setOpacity(opacity)
+    overlay.once('ready-to-show', () => {
+      overlayLoaded = true
+      if (!disposed && overlayWanted) {
+        overlaySize()
+        overlay?.show()
+        publish()
+      }
+    })
+    overlay.on('close', (event) => {
+      if (disposed) return
+      event.preventDefault()
+      const state = controller.snapshot().state
+      if (['recording', 'paused', 'stopping'].includes(state)) {
+        if (!collapsed && overlay) expandedHeight = overlay.getBounds().height
+        collapsed = true
+        overlaySize()
+        publish()
+      } else {
+        overlayWanted = false
+        overlay?.hide()
+      }
+    })
+    overlay.on('hide', () => { dragOrigin = undefined })
+    overlay.on('closed', () => { overlay = undefined; overlayLoaded = false; dragOrigin = undefined })
+  }
+
+  function showSetup(): void {
+    if (setup && !setup.isDestroyed()) { setup.show(); setup.focus(); return }
+    setup = createWindow('setup', {
+      title: 'Vinxa — Setup and Consent', width: 580, height: 800,
+      minWidth: 500, minHeight: 600, alwaysOnTop: true
+    })
+    setup.once('ready-to-show', () => {
+      if (!disposed && controller.snapshot().state === 'awaiting-consent') { setup?.show(); setup?.focus() }
+    })
+    setup.on('closed', () => { setup = undefined; controller.cancel() })
+  }
+
+  async function saveHotkeys(value: Hotkeys): Promise<void> {
+    if (settingsBusy) throw new Error('Hotkey settings are already being saved.')
+    settingsBusy = true
+    const previous = hotkeys
+    const hadPrevious = shortcuts.active().length > 0
+    const temporary = join(userData, `phase2-hotkeys-${randomUUID()}.tmp`)
+    try {
+      shortcuts.apply(value)
+      await mkdir(userData, { recursive: true })
+      await writeFile(temporary, JSON.stringify(value, null, 2), 'utf8')
+      await rename(temporary, settingsFile)
+      hotkeys = { ...value }
+      hotkeyErrors = []
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined)
+      if (hadPrevious) {
+        try { shortcuts.apply(previous) } catch {
+          hotkeys = shortcuts.bindings() ?? previous
+          hotkeyErrors.push('Previous shortcuts could not all be restored. Use the tray menu.')
+        }
+      } else shortcuts.dispose()
+      const message = error instanceof Error ? error.message : 'Hotkeys could not be saved.'
+      hotkeyErrors = [...new Set([...hotkeyErrors, message])]
+      throw new Error(message)
+    } finally {
+      settingsBusy = false
+      publish()
+    }
+  }
+
+  async function execute(command: Phase2Command): Promise<void> {
+    if (disposed) return
+    if (!ready) throw new Error('Settings are loading. Try again in a moment.')
+    commandError = null
+    try {
+      switch (command.type) {
+        case 'start':
+          if (controller.requestStart()) showSetup()
+          else if (['recording', 'paused'].includes(controller.snapshot().state)) showOverlay()
+          break
+        case 'confirm':
+          await controller.confirm(command.config, command.consent)
+          if (disposed) return
+          if (['recording', 'paused'].includes(controller.snapshot().state)) { setup?.close(); showOverlay() }
+          break
+        case 'cancel': controller.cancel(); setup?.close(); break
+        case 'pause-resume': await controller.pauseResume(); break
+        case 'stop':
+          await controller.stop()
+          if (controller.snapshot().state === 'idle') setup?.close()
+          break
+        case 'show-overlay': showOverlay(); break
+        case 'collapse':
+          if (!collapsed && overlay) expandedHeight = overlay.getBounds().height
+          collapsed = !collapsed
+          showOverlay()
+          overlaySize()
+          break
+        case 'opacity': opacity = command.value; overlay?.setOpacity(opacity); break
+        case 'copy-lines':
+          clipboard.writeText(controller.snapshot().segments.filter((segment) => segment.isFinal).slice(-10)
+            .map((segment) => `${segment.source === 'mic' ? 'You' : 'Remote'}: ${segment.text}`).join('\n'))
+          break
+        case 'copy-announcement':
+          clipboard.writeText(backend.mode === 'demo' ? demoAnnouncement : announcement)
+          controller.markAnnouncementCopied()
+          break
+        case 'hotkeys': await saveHotkeys(command.value); break
+      }
+    } catch (error) {
+      commandError = error instanceof Error ? error.message : 'The operation could not be completed.'
+      throw error
+    } finally { publish() }
+  }
+
+  function run(command: Phase2Command): void {
+    void execute(command).catch(() => undefined)
+  }
+
+  function trusted(event: Electron.IpcMainInvokeEvent): void {
+    if (!windows().some((window) => window.webContents.mainFrame === event.senderFrame)) throw new Error('Untrusted sender')
+  }
+
+  ipcMain.handle(phase2Channels.snapshot, (event) => { trusted(event); return snapshot() })
+  const onOverlayDrag = (event: Electron.IpcMainEvent, payload: unknown): void => {
+    if (disposed || !overlay || overlay.isDestroyed() || event.senderFrame !== overlay.webContents.mainFrame) return
+    const result = overlayDragSchema.safeParse(payload)
+    if (!result.success) return
+    if (result.data === 'end') { dragOrigin = undefined; return }
+    const cursor = screen.getCursorScreenPoint()
+    if (result.data === 'start') {
+      const bounds = overlay.getBounds()
+      dragOrigin = { cursorX: cursor.x, cursorY: cursor.y, windowX: bounds.x, windowY: bounds.y }
+    } else if (dragOrigin) {
+      overlay.setPosition(
+        Math.round(dragOrigin.windowX + cursor.x - dragOrigin.cursorX),
+        Math.round(dragOrigin.windowY + cursor.y - dragOrigin.cursorY)
+      )
+    }
+  }
+  ipcMain.on(phase2Channels.overlayDrag, onOverlayDrag)
+  ipcMain.handle(phase2Channels.command, (event, payload: unknown) => {
+    trusted(event)
+    const command = phase2CommandSchema.parse(payload)
+    if (['confirm', 'cancel', 'copy-announcement'].includes(command.type) && event.senderFrame !== setup?.webContents.mainFrame) {
+      throw new Error('This action must come from the consent window.')
+    }
+    return execute(command)
+  })
+  const unsubscribe = controller.subscribe(() => {
+    const state = controller.snapshot().state
+    if (['recording', 'paused', 'stopping'].includes(state)) showOverlay()
+    publish()
+  })
+
+  void (async () => {
+    try {
+      hotkeys = hotkeysSchema.parse(JSON.parse(await readFile(settingsFile, 'utf8')))
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') hotkeyErrors.push('Saved hotkeys were invalid. Defaults are being used.')
+    }
+    if (disposed) return
+    try { shortcuts.apply(hotkeys) } catch (error) {
+      hotkeyErrors.push(error instanceof Error ? error.message : 'Hotkeys could not be registered. Use the tray menu.')
+    }
+    ready = true
+    publish()
+  })()
+  publish()
+
+  return () => {
+    disposed = true
+    dragOrigin = undefined
+    unsubscribe()
+    shortcuts.dispose()
+    controller.dispose()
+    ipcMain.removeHandler(phase2Channels.command)
+    ipcMain.removeHandler(phase2Channels.snapshot)
+    ipcMain.removeListener(phase2Channels.overlayDrag, onOverlayDrag)
+  }
+}

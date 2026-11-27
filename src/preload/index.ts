@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CaptureBridge, DesktopApi } from '../shared/contracts'
+import { createPhase2Api } from './phase2'
 import { ipcChannels } from '../shared/ipc-channels'
 import { captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema, transcriptSegmentSchema } from '../shared/schemas'
 import { validatePcmFrame } from '../shared/pcm'
@@ -25,6 +26,7 @@ const desktopApi: DesktopApi = {
 }
 
 contextBridge.exposeInMainWorld('vinxa', desktopApi)
+contextBridge.exposeInMainWorld('vinxaPhase2', createPhase2Api())
 
 const captureBridge: CaptureBridge = {
   ready: () => ipcRenderer.invoke(ipcChannels.captureReady),
