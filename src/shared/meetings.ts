@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Phase4Api } from './phase4'
+import { bookmarkSchema } from './phase5'
 import { audioSourceSchema, meetingInsightsSchema, transcriptSegmentSchema } from './schemas'
 import type { AudioFrameMetadata, AudioSourceName, MeetingInsights, RecordingConfig, TranscriptSegment } from './contracts'
 
@@ -20,7 +21,8 @@ export const actionItemSchema = meetingInsightsSchema.shape.actionItems.element.
 export const meetingDetailSchema = z.object({
   meeting: meetingSchema, transcript: z.array(transcriptSegmentSchema),
   insights: meetingInsightsSchema.nullable(), actions: z.array(actionItemSchema),
-  speakers: z.object({ mic: title, system: title }).strict()
+  speakers: z.object({ mic: title, system: title }).strict(),
+  bookmarks: z.array(bookmarkSchema).optional()
 }).strict()
 export type MeetingDetail = z.infer<typeof meetingDetailSchema>
 export const librarySchema = z.object({

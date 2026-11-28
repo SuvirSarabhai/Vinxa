@@ -5,6 +5,7 @@ import { timestamp } from './session'
 import { Icon } from './Icon'
 import type { SearchResult } from '../../../shared/phase4'
 import { MeetingSearch } from './MeetingSearch'
+import { transcriptSpeaker } from '../../../shared/speaker-label'
 
 function date(value: number): string { return new Date(value).toLocaleString() }
 function message(error: unknown): string { return error instanceof Error ? error.message : 'Meeting data could not be loaded.' }
@@ -33,7 +34,14 @@ export function MeetingDetailView({ detail, command, busy, target }: {
     {meeting.notesMessage && <p className="notice">{meeting.notesMessage}</p>}
     <div className="detail-tabs" role="tablist" aria-label="Saved meeting details">
       {['Overview', 'Transcript', 'Decisions', 'Actions'].map(name =>
-        <button key={name} role="tab" aria-selected={tab === name} onClick={() => setTab(name)}>{name}</button>)}
+            <button key={name} role="tab" aria-selected={tab === name} tabIndex={tab === name ? 0 : -1} onClick={() => setTab(name)}
+              onKeyDown={event => {
+                const tabs = ['Overview', 'Transcript', 'Decisions', 'Actions']
+                if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return
+                event.preventDefault()
+                const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length-1 : (tabs.indexOf(name)+(event.key === 'ArrowRight' ? 1 : -1)+tabs.length)%tabs.length
+                setTab(tabs[index]); (event.currentTarget.parentElement?.children[index] as HTMLElement)?.focus()
+              }}>{name}</button>)}
     </div>
     <div role="tabpanel" aria-label={tab}>
       {tab === 'Overview' && <>
@@ -60,7 +68,7 @@ export function MeetingDetailView({ detail, command, busy, target }: {
       {tab === 'Transcript' && <div className="saved-transcript">
         {!detail.transcript.length && <p>No finalized transcript was captured.</p>}
         {detail.transcript.map(segment => <article id={'passage-'+segment.id} className={'segment '+(target?.segmentId===segment.id?'search-match':'')} key={segment.id}>
-          <time>{timestamp(segment.startMs)}</time><div><strong>{detail.speakers[segment.source]}</strong>
+          <time>{timestamp(segment.startMs)}</time><div><strong>{transcriptSpeaker(segment,detail.speakers)}</strong>
             <p>{segment.text}</p></div>
         </article>)}
       </div>}
@@ -77,12 +85,17 @@ export function MeetingDetailView({ detail, command, busy, target }: {
   </section>
 }
 
-export function SavedMeetings() {
+export function SavedMeetings({ openTarget }: { openTarget?: SearchResult | null }) {
   const [target,setTarget]=useState<SearchResult|null>(null)
   const [library, setLibrary] = useState<LibraryData | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const selection = useRef(selected)
   selection.current = selected
+  useEffect(() => {
+    if (!openTarget) return
+    selection.current = openTarget.meetingId
+    setTarget(openTarget); setSelected(openTarget.meetingId)
+  }, [openTarget])
   const [detail, setDetail] = useState<MeetingDetail | null>(null)
   const [error, setError] = useState('')
   const [notice,setNotice]=useState('')

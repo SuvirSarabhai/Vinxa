@@ -10,6 +10,7 @@ const paths = {
   settings:
     'm9 3-1 3-3 1-2 3 2 2-1 3 3 2 2-1 3 2 3-2 2 1 3-2-1-3 2-2-2-3-3-1-1-3H9Zm6 9a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   library: 'M4 3v18M9 3v18M14 3v18m3-17 4 16M2 21h20',
+  tools: 'M14 6a5 5 0 0 0-6 6L3 17a3 3 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-3 3-4-4 3-3Z',
   dashboard: 'M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm11 0h7v7h-7z',
   transcript: 'M4 3h16v18H4V3Zm4 5h8M8 12h8m-8 4h5',
   overlay: 'M3 4h18v16H3V4Zm8 8h8v6h-8v-6Z',

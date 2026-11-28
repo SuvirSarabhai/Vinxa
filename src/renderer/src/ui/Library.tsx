@@ -3,9 +3,10 @@ import type { Phase2Snapshot } from '../../../shared/phase2'
 import { Icon } from './Icon'
 import { Transcript } from './Transcript'
 import { SavedMeetings } from './SavedMeetings'
+import type { SearchResult } from '../../../shared/phase4'
 
-export function Library({ snapshot }: { snapshot: Phase2Snapshot }) {
-  return snapshot.mode === 'demo' ? <DemoLibrary snapshot={snapshot} /> : <SavedMeetings />
+export function Library({ snapshot, target }: { snapshot: Phase2Snapshot; target?: SearchResult | null }) {
+  return snapshot.mode === 'demo' ? <DemoLibrary snapshot={snapshot} /> : <SavedMeetings openTarget={target} />
 }
 
 function DemoLibrary({ snapshot }: { snapshot: Phase2Snapshot }) {

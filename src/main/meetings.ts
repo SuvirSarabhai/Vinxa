@@ -124,6 +124,8 @@ export function installMeetings(window: BrowserWindow, recording: RecordingBacke
   }
   return {
     backend,
+    changed,
+    exclusive,
     async close() {
       disposed = true
       disk.close()

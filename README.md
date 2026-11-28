@@ -234,6 +234,13 @@ text, and storage erasure has the limits explained in its confirmation dialog.
 
 ## Delivery order
 
+The main window has a sidebar with Home, Library, Tools and Settings. Phase 5
+features open inside Tools. See [setup, limits and user-run acceptance](docs/phase5.md),
+[architecture](docs/architecture.md), and [privacy/consent](docs/privacy-and-consent.md).
+Run `pnpm mock:crm` for the local demo receiver. Speaker clustering needs optional
+local ONNX models; profile encryption requires Windows EFS support. These changes
+have not yet been built or tested by the agent.
+
 1. Electron shell, installer smoke test, shared contracts.
 2. Separate microphone and loopback capture; local faster-whisper speed test.
 3. Live transcript, hotkeys, consent, recording indicator.

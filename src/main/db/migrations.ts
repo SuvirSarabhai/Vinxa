@@ -108,6 +108,19 @@ export const migrations = [{
       WHERE notesStatus='failed' AND notesMessage='Automatic retries exhausted. Start the provider, then choose Retry pending notes in Settings.'
         AND id IN (SELECT meetingId FROM notes_queue);
   `
+}, {
+  version: 5,
+  sql: `
+    CREATE TABLE bookmarks(id TEXT PRIMARY KEY, meetingId TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      atMs INTEGER NOT NULL CHECK(atMs>=0), note TEXT NOT NULL);
+    CREATE INDEX bookmarks_timeline ON bookmarks(meetingId,atMs);
+    CREATE TABLE crm_deliveries(meetingId TEXT NOT NULL REFERENCES meetings(id) ON DELETE CASCADE,
+      recordId TEXT NOT NULL, endpoint TEXT NOT NULL, status TEXT NOT NULL, sentAt INTEGER,
+      PRIMARY KEY(meetingId,recordId,endpoint));
+    CREATE TABLE remote_speakers(meetingId TEXT NOT NULL, segmentId TEXT NOT NULL, label TEXT NOT NULL,
+      PRIMARY KEY(meetingId,segmentId),
+      FOREIGN KEY(meetingId,segmentId) REFERENCES transcript_segments(meetingId,id) ON DELETE CASCADE);
+  `
 }]
 
 export function migrate(db: Database.Database): void {

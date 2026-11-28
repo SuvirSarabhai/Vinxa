@@ -1,0 +1,2 @@
+# Optional on-device remote speaker clustering. Install only when using FR18.
+sherpa-onnx>=1.12,<2

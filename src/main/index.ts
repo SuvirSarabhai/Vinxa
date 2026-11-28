@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray, session } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Tray, session } from 'electron'
 import { MeetingStore } from './db/repository'
 import { savedNotesSettings } from './insights/settings'
 import { networkGuard } from './network-guard'
@@ -10,6 +10,8 @@ import { ipcChannels } from '../shared/ipc-channels'
 import { fixtureCommandSchema } from '../shared/schemas'
 import { startCaptureTest } from './audio/capture-test'
 import type { CaptureTestMode } from './audio/capture-test'
+import { applyRequestedEncryption } from './phase5/encryption'
+import { applySpeechTuning } from './phase5/speech'
 
 // UI smoke tests use an isolated profile so they cannot change real shortcuts
 // or consent receipts, or take over an already running development instance.
@@ -145,7 +147,11 @@ if (!hasLock) {
       })().catch(() => console.error('Local speech shutdown did not finish normally')).finally(() => app.quit())
     }
   })
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    try { await applyRequestedEncryption(app.getPath('userData')) }
+    catch (error) { dialog.showErrorBox('Vinxa encryption was not completed', error instanceof Error ? error.message : 'Profile encryption failed.') }
+    try { applySpeechTuning(app.getPath('userData')) }
+    catch { dialog.showErrorBox('Saved speech configuration is invalid', 'Startup defaults will be used. Open Tools in the sidebar and save a valid speech configuration.') }
     networkGuard.install(session.defaultSession)
     app.on('session-created',created=>networkGuard.install(created))
     createTray()

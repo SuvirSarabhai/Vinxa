@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { CaptureBridge, DesktopApi } from '../shared/contracts'
 import { createPhase2Api } from './phase2'
 import { createMeetingsApi } from './meetings'
+import { createPhase5Api } from './phase5'
 import { ipcChannels } from '../shared/ipc-channels'
 import { audioFrameMetadataSchema, captureFrameDiagnosticsSchema, captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema,
   sidecarEventSchema, transcriptSegmentSchema } from '../shared/schemas'
@@ -46,6 +47,7 @@ const desktopApi: DesktopApi = {
   }
 }
 contextBridge.exposeInMainWorld('vinxaMeetings', createMeetingsApi())
+contextBridge.exposeInMainWorld('vinxaPhase5', createPhase5Api())
 
 contextBridge.exposeInMainWorld('vinxa', desktopApi)
 contextBridge.exposeInMainWorld('vinxaPhase2', createPhase2Api())

@@ -3,8 +3,9 @@
 import type { DesktopApi } from '../../shared/contracts'
 import type { Phase2Api } from '../../shared/phase2'
 import type { MeetingsApi } from '../../shared/meetings'
+import type { Phase5Api } from '../../shared/phase5'
 
 declare global {
-  interface Window { vinxa: DesktopApi; vinxaPhase2: Phase2Api; vinxaMeetings: MeetingsApi }
+  interface Window { vinxa: DesktopApi; vinxaPhase2: Phase2Api; vinxaMeetings: MeetingsApi; vinxaPhase5: Phase5Api }
 }
 

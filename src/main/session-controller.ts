@@ -20,6 +20,7 @@ export class SessionController {
   private generation = 0
   private disposed = false
   private startedAt = 0
+  private startedMonotonic = 0
   private announcementCopied = false
   private backendTail: Promise<void> = Promise.resolve()
   private listeners = new Set<() => void>()
@@ -59,6 +60,13 @@ export class SessionController {
   }
 
   getState(): RecordingState { return this.current.state }
+  bookmarkMoment(): { id: string; atMs: number } {
+    if (this.disposed || this.current.busy || this.current.state !== 'recording' || !this.current.sessionId) {
+      throw new Error('Start or resume recording before adding a bookmark.')
+    }
+    return { id: this.current.sessionId, atMs: Math.max(0, Math.floor(performance.now() - this.startedMonotonic)) }
+  }
+  announce(message: string): void { this.current.notice = message; this.publish() }
   async selectMicrophone(deviceId:string):Promise<void>{
     if(this.disposed||this.current.busy||this.current.state!=='paused'||!this.current.config.microphoneEnabled||!this.backend.selectMicrophone)throw new Error('Pause an active microphone session before changing its device.')
     await this.backend.selectMicrophone(deviceId)
@@ -127,6 +135,7 @@ export class SessionController {
         this.current.startedAtMs = this.startedAt
         this.current.endedAtMs = null
         const sessionStartMs = performance.now()
+        this.startedMonotonic = sessionStartMs
         this.transition('recording')
         try {
           await this.backend.start(validated, sessionId, {

@@ -42,6 +42,9 @@ def build_arguments(root):
         args.extend(["--collect-all", package])
     for package in ("faster-whisper", "jsonschema", "websockets"):
         args.extend(["--recursive-copy-metadata", package])
+    # Phase 5 remains optional: normal packaging does not acquire new models.
+    if os.environ.get("VINXA_PACKAGE_DIARIZATION") == "1":
+        args.extend(["--collect-all", "sherpa_onnx"])
     for package in ("torch", "tensorflow", "pytest"):
         args.extend(["--exclude-module", package])
     args.append(str(root / "sidecar" / "entrypoint.py"))
