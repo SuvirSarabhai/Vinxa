@@ -8,6 +8,7 @@ import { meetingSchema, meetingDetailSchema, librarySchema, meetingIdSchema, mee
 import type { Meeting, MeetingRepository, NoteSources, TranscriptRepository } from '../../shared/meetings'
 import { meetingInsightsSchema, recordingConfigSchema, transcriptSegmentSchema } from '../../shared/schemas'
 import type { MeetingInsights, RecordingConfig, TranscriptSegment } from '../../shared/contracts'
+import { bookmarks } from '../phase5/data'
 
 const selectMeeting = `SELECT m.*,
   (SELECT COUNT(*) FROM action_items a WHERE a.meetingId=m.id) AS actionItemCount,
@@ -49,7 +50,9 @@ export class MeetingStore implements MeetingRepository, TranscriptRepository {
     return librarySchema.parse({ meetings, stats })
   }
   transcript(id: string): TranscriptSegment[] {
-    return this.db.prepare('SELECT * FROM transcript_segments WHERE meetingId=? ORDER BY startMs,endMs,id')
+    return this.db.prepare(`SELECT t.id,t.meetingId,t.source,COALESCE(r.label,t.speakerId) speakerId,t.text,t.startMs,t.endMs,t.isFinal
+      FROM transcript_segments t LEFT JOIN remote_speakers r ON r.meetingId=t.meetingId AND r.segmentId=t.id
+      WHERE t.meetingId=? ORDER BY t.startMs,t.endMs,t.id`)
       .all(meetingIdSchema.parse(id)).map(row => storedSegment.parse(row))
   }
   get(id: string) {
@@ -61,7 +64,7 @@ export class MeetingStore implements MeetingRepository, TranscriptRepository {
       .parse(this.db.prepare('SELECT source,displayName FROM speakers WHERE meetingId=?').all(id))
     const names = { mic: 'You', system: 'Remote' }
     for (const speaker of speakers) names[speaker.source] = speaker.displayName
-    return meetingDetailSchema.parse({ meeting, transcript: this.transcript(id), actions, speakers: names,
+    return meetingDetailSchema.parse({ meeting, transcript: this.transcript(id), actions, speakers: names, bookmarks: bookmarks(this, id),
       insights: notes ? { summary: notes.summary, decisions,
         actionItems: actions.map(row => { const { id: _id, ...action } = z.object({
           id: z.string(), task: z.string(), owner: z.string().nullable(), due: z.string().nullable(), status: z.enum(['pending', 'done'])
@@ -141,6 +144,7 @@ export class MeetingStore implements MeetingRepository, TranscriptRepository {
         action.run(targetId, id, item.task, item.owner, item.due, previous?.status ?? item.status)
       }
       this.notesStatus(id, 'completed', 'Notes saved.')
+      this.db.prepare("UPDATE crm_deliveries SET status='stale' WHERE meetingId=? AND status='sent'").run(id)
     })()
   }
   renameSpeaker(id: string, source: 'mic' | 'system', name: string): void {
@@ -154,6 +158,7 @@ export class MeetingStore implements MeetingRepository, TranscriptRepository {
     if (!this.db.prepare('UPDATE action_items SET status=? WHERE id=? AND meetingId=?').run(status, actionId, id).changes) {
       throw new Error('Action item was not found.')
     }
+    this.db.prepare("UPDATE crm_deliveries SET status='stale' WHERE meetingId=? AND status='sent'").run(id)
   }
   setting(key: string): string | undefined {
     return z.object({ value: z.string() }).optional().parse(this.db.prepare('SELECT value FROM settings WHERE key=?').get(key))?.value

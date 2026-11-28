@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { SearchResult } from '../../shared/phase4'
 import type { Phase2Snapshot } from '../../shared/phase2'
 import { useOverlayDrag } from './use-overlay-drag'
 import { Icon } from './ui/Icon'
@@ -6,6 +7,7 @@ import { Transcript } from './ui/Transcript'
 import { Setup } from './ui/Setup'
 import { Settings, OpacitySetting } from './ui/Settings'
 import { Library } from './ui/Library'
+import { Phase5Tools } from './Phase5'
 import { AudioCard, ModeBadge, SessionControls, ShortcutHints, StatusBadge } from './ui/SessionWidgets'
 import { useDuration, useSession } from './ui/session'
 import type { CommandHandler } from './ui/session'
@@ -181,7 +183,13 @@ function Dashboard({
 
 export function Phase2App() {
   const { snapshot, command, busy, error } = useSession()
-  const [view, setView] = useState<'dashboard' | 'library' | 'settings'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'library' | 'tools' | 'settings'>('dashboard')
+  const [passage, setPassage] = useState<SearchResult | null>(null)
+  useEffect(() => {
+    const offPassage = window.vinxaPhase5.onPassage(target => { setPassage(target); setView('library') })
+    const offTools = window.vinxaPhase5.onOpenTools(() => setView('tools'))
+    return () => { offPassage(); offTools() }
+  }, [])
   const route = window.location.hash.slice(1)
   if (!snapshot)
     return (
@@ -200,36 +208,45 @@ export function Phase2App() {
   if (route === 'overlay') return <Overlay snapshot={snapshot} command={command} busy={busy} error={error} />
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <aside className="app-sidebar" aria-label="Workspace sidebar">
         <div className="brand">
           <span className="brand-mark">
             <Icon name="wave" />
           </span>
           <strong>Vinxa</strong>
-          <ModeBadge snapshot={snapshot} />
         </div>
-        <nav aria-label="Main navigation">
-          {(['dashboard', 'library', 'settings'] as const).map((name) => (
+        <div className="sidebar-mode"><ModeBadge snapshot={snapshot} /></div>
+        <nav className="sidebar-nav" aria-label="Main navigation">
+          {([
+            { name: 'dashboard', label: 'Home', icon: 'dashboard' },
+            { name: 'library', label: 'Library', icon: 'library' },
+            { name: 'tools', label: 'Tools', icon: 'tools' },
+            { name: 'settings', label: 'Settings', icon: 'settings' }
+          ] as const).map(({ name, label, icon }) => (
             <button
               key={name}
+              title={label}
               aria-current={view === name ? 'page' : undefined}
               onClick={() => setView(name)}
             >
-              <Icon name={name} />
-              {name[0].toUpperCase() + name.slice(1)}
+              <Icon name={icon} />
+              <span className="sidebar-label">{label}</span>
             </button>
           ))}
         </nav>
-        <span className={`engine-indicator ${snapshot.engine.ready ? 'engine-ready' : ''}`} role="status">
-          <span className="status-dot" />
-          {snapshot.engine.ready
-            ? snapshot.mode === 'demo'
-              ? 'Demo ready'
-              : 'Local engine ready'
-            : 'Preparing local speech…'}
-        </span>
-      </header>
-      <main className="workspace">
+        <div className="sidebar-footer">
+          <span className={`engine-indicator ${snapshot.engine.ready ? 'engine-ready' : ''}`} role="status">
+            <span className="status-dot" />
+            {snapshot.engine.ready
+              ? snapshot.mode === 'demo'
+                ? 'Demo ready'
+                : 'Local engine ready'
+              : 'Preparing local speech…'}
+          </span>
+          <p className="sidebar-help">{snapshot.mode === 'demo' ? 'Sample text only' : 'Your local meeting workspace'}</p>
+        </div>
+      </aside>
+      <main className="workspace app-content">
         <div className="page-heading">
           <div>
             <p className="eyebrow">YOUR LOCAL MEETING WORKSPACE</p>
@@ -238,6 +255,8 @@ export function Phase2App() {
                 ? 'Your meetings, remembered.'
                 : view === 'settings'
                   ? 'Settings'
+                  : view === 'tools'
+                    ? 'Meeting tools'
                   : 'Meeting library'}
             </h1>
             <p className="muted">
@@ -245,6 +264,8 @@ export function Phase2App() {
                 ? 'Stay in the conversation. Keep the words that matter.'
                 : view === 'settings'
                   ? 'Make Vinxa work the way you do.'
+                  : view === 'tools'
+                    ? 'Bookmarks, Ask Vinxa, integrations, and speech configuration.'
                   : 'A home for your meeting memory.'}
             </p>
           </div>
@@ -272,8 +293,10 @@ export function Phase2App() {
           <Dashboard snapshot={snapshot} command={command} busy={busy} />
         ) : view === 'settings' ? (
           <Settings snapshot={snapshot} command={command} busy={busy} />
+        ) : view === 'tools' ? (
+          <Phase5Tools embedded demo={snapshot.mode === 'demo'} />
         ) : (
-          <Library snapshot={snapshot} />
+          <Library snapshot={snapshot} target={passage} />
         )}
         <footer className="app-footer">
           <span>

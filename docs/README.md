@@ -1,5 +1,10 @@
 # Project Documentation
 
+[Phase 5 setup and acceptance](phase5.md), [architecture](architecture.md), and
+[privacy and consent](privacy-and-consent.md) describe the optional tools and
+their prerequisites. Sidebar navigation opens Tools inside the main workspace;
+the existing colour palette and fonts are preserved.
+
 [Stitch frontend assessment, integration and verification](stitch-frontend-integration.md)
 describes the new React UI, imported design reference, automated desktop checks,
 real speech test with synthetic input, and remaining hardware checks.

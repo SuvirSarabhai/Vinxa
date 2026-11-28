@@ -75,6 +75,16 @@ async function main() {
     await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1120, 760))
     pass('dashboard, local fonts, honest demo state, no horizontal overflow')
 
+    const navigation = page.getByRole('navigation', { name: 'Main navigation' })
+    assert.equal(await navigation.getByRole('button').count(), 4)
+    const windowsBeforeTools = desktop.windows().length
+    await navigation.getByRole('button', { name: 'Tools', exact: true }).click()
+    await page.getByRole('heading', { name: 'Tools need a local recording', exact: true }).waitFor()
+    assert.equal(await navigation.getByRole('button', { name: 'Tools', exact: true }).getAttribute('aria-current'), 'page')
+    assert.equal(desktop.windows().length, windowsBeforeTools)
+    await navigation.getByRole('button', { name: 'Home', exact: true }).click()
+    pass('sidebar Home, Library, Tools and Settings; Tools opens in the existing window with honest demo state')
+
     await page.getByRole('button', { name: 'Library', exact: true }).click()
     await page.getByRole('heading', { name: 'No saved meetings yet' }).waitFor()
     assert.equal(await page.getByRole('searchbox').isDisabled(), true)
@@ -106,7 +116,7 @@ async function main() {
     await waitForSnapshot(page, (value) => value.hotkeys.start === testBindings.start)
     await page.screenshot({ path: join(artifacts, 'settings.png'), fullPage: true })
     pass('library empty state, shortcut validation, persistence, native registration, reset')
-    await page.getByRole('button', { name: 'Dashboard', exact: true }).click()
+    await page.getByRole('button', { name: 'Home', exact: true }).click()
 
     let setupCreated = desktop.waitForEvent('window')
     await page.getByRole('button', { name: 'Start demo', exact: true }).click()
@@ -312,7 +322,7 @@ async function main() {
     for (let step = 0; step < 10; step++) await settingsSlider.press('ArrowRight')
     await waitForSnapshot(page, (value) => value.opacity === 0.6)
     await overlay.waitForFunction(() => document.querySelector('input[type="range"]').value === '60')
-    await page.getByRole('button', { name: 'Dashboard', exact: true }).click()
+    await page.getByRole('button', { name: 'Home', exact: true }).click()
     pass('minimum window sizes and cross-window opacity synchronization')
     await overlay.getByRole('button', { name: 'Stop', exact: true }).click()
     await overlay.locator('.status.completed').waitFor()

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, globalShortcut, ipcMain, Menu, nativeImage, screen } from 'electron'
 import type { Tray } from 'electron'
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -15,6 +15,7 @@ import { createSpeechBackend } from './speech-backend'
 import type { MeetingStore } from './db/repository'
 import { saveConsent } from './consent-log'
 import { installMeetings } from './meetings'
+import { installPhase5 } from './phase5/install'
 
 function statusIcon(red: number, green: number, blue: number): Electron.NativeImage {
   const size = 16
@@ -38,6 +39,7 @@ export function installPhase2(
 ): () => Promise<void> {
   let overlay: BrowserWindow | undefined
   let setup: BrowserWindow | undefined
+  let bookmarkShortcut = false
   let disposed = false
   let ready = false
   let revision = 0
@@ -67,6 +69,8 @@ export function installPhase2(
   const amberIcon = statusIcon(245, 158, 11)
   const meetings = store ? installMeetings(library, backend, store, id => controller.forgetDeletedMeeting(id)) : undefined
   const controller: SessionController = new SessionController(meetings?.backend ?? backend, record => saveConsent(userData, record))
+  const phase5 = store && meetings ? installPhase5({ store, controller, library,
+    openLibrary, requestStart: () => run({ type: 'start' }), changed: meetings.changed, exclusive: meetings.exclusive }) : undefined
   const shortcuts = new ShortcutBindings(globalShortcut, (action) => {
     const commands: Record<keyof Hotkeys, Phase2Command> = {
       start: { type: 'start' }, pause: { type: 'pause-resume' }, stop: { type: 'stop' }
@@ -105,7 +109,7 @@ export function installPhase2(
     if (nativeStatus !== status) {
       nativeStatus = status
       tray.setImage(badge ?? idleIcon)
-      tray.setToolTip(`Vinxa ${value.mode === 'demo' ? 'Demo ' : ''}— ${value.state}`)
+      tray.setToolTip(`Vinxa ${value.mode === 'demo' ? 'Demo ' : ''}— ${value.state}${bookmarkShortcut ? ' · Bookmark Ctrl+Alt+B' : ''}`)
     }
     for (const window of windows()) {
       if (windowStatus.get(window) !== status) {
@@ -121,11 +125,24 @@ export function installPhase2(
       { label: 'Start', enabled: ready && engine.ready && !value.busy && ['idle', 'completed', 'error'].includes(value.state), click: () => run({ type: 'start' }) },
       { label: value.state === 'paused' ? 'Resume' : 'Pause', enabled: active && !value.busy, click: () => run({ type: 'pause-resume' }) },
       { label: 'Stop', enabled: ready && (active || value.state === 'awaiting-consent'), click: () => run({ type: 'stop' }) },
+      { label: 'Bookmark moment (Ctrl+Alt+B)', enabled: Boolean(phase5) && value.state === 'recording' && !value.busy, click: bookmark },
       { type: 'separator' },
       { label: 'Show Overlay', enabled: ready, click: () => run({ type: 'show-overlay' }) },
       { label: 'Open Library / Settings', click: openLibrary },
+      { label: 'Tools', enabled: Boolean(phase5), click: showTools },
       { label: 'Quit', click: () => app.quit() }
     ]))
+  }
+
+  function bookmark(): void {
+    try { phase5?.bookmark(); commandError = null }
+    catch (error) { commandError = error instanceof Error ? error.message : 'Bookmark could not be saved.' }
+    publish()
+  }
+  function showTools(): void {
+    if (!phase5 || disposed) return
+    openLibrary()
+    library.webContents.send('phase5:open-tools')
   }
 
   function createWindow(route: string, options: Electron.BrowserWindowConstructorOptions): BrowserWindow {
@@ -231,6 +248,7 @@ export function installPhase2(
   }
 
   async function saveHotkeys(value: Hotkeys): Promise<void> {
+    if (phase5 && Object.values(value).some(v => v.toUpperCase() === 'CTRL+ALT+B')) throw new Error('Ctrl+Alt+B is reserved for bookmarks. Choose another recording shortcut.')
     if (settingsBusy) throw new Error('Hotkey settings are already being saved.')
     settingsBusy = true
     const previous = hotkeys
@@ -359,11 +377,21 @@ export function installPhase2(
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') hotkeyErrors.push('Saved hotkeys were invalid. Defaults are being used.')
     }
     if (disposed) return
+    if (phase5) {
+      if (!Object.values(hotkeys).some(v => v.toUpperCase() === 'CTRL+ALT+B')) bookmarkShortcut = globalShortcut.register('Ctrl+Alt+B', bookmark)
+      if (!bookmarkShortcut) hotkeyErrors.push('Bookmark shortcut Ctrl+Alt+B is unavailable. Use Bookmark moment in the tray menu.')
+      nativeStatus = ''
+    }
     try { shortcuts.apply(hotkeys) } catch (error) {
       hotkeyErrors.push(error instanceof Error ? error.message : 'Hotkeys could not be registered. Use the tray menu.')
     }
     ready = true
     publish()
+    if (store && !store.setting('first-run-complete') && !process.env.VINXA_SMOKE_USER_DATA) {
+      void dialog.showMessageBox(library, { type: 'info', title: 'Welcome to Vinxa', message: 'Start a meeting from the dashboard or tray.',
+        detail: 'Confirm participant consent before capture. Meeting-app mute does not mute Vinxa. Pause suspends capture; Stop saves it. Closing the overlay only hides it. Open Library or Tools from the sidebar. Ctrl+Alt+B bookmarks a moment while recording.', buttons: ['Got it'] })
+        .then(() => { if (!disposed) store.setSetting('first-run-complete', 'true') }).catch(() => undefined)
+    }
   })()
   publish()
 
@@ -374,12 +402,14 @@ export function installPhase2(
     unsubscribe()
     unsubscribeEngine?.()
     shortcuts.dispose()
+    if (bookmarkShortcut) globalShortcut.unregister('Ctrl+Alt+B')
     try { await controller.dispose() }
     finally {
       backend.dispose?.()
       ipcMain.removeHandler(phase2Channels.command)
       ipcMain.removeHandler(phase2Channels.snapshot)
       ipcMain.removeListener(phase2Channels.overlayDrag, onOverlayDrag)
+      await phase5?.close()
       await meetings?.close()
     }
   }

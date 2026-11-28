@@ -1,5 +1,6 @@
 import type { TranscriptSegment } from '../../shared/contracts'
 import { transcriptSegmentSchema } from '../../shared/schemas'
+import { transcriptSpeaker } from '../../shared/speaker-label'
 export function transcriptChunks(input: TranscriptSegment[], maximum: number): string[] {
   if (!Number.isInteger(maximum) || maximum < 1) throw new Error('Invalid notes chunk size.')
   const segments = input.map(value => transcriptSegmentSchema.parse(value)).sort((a,b) => a.startMs-b.startMs || a.endMs-b.endMs || a.id.localeCompare(b.id))
@@ -9,7 +10,7 @@ export function transcriptChunks(input: TranscriptSegment[], maximum: number): s
   for (const segment of segments) {
     if (!segment.text.trim()) continue
     const line = JSON.stringify({ id: segment.id, startMs: segment.startMs, endMs: segment.endMs, source: segment.source,
-      speaker: segment.source === 'mic' ? 'You' : 'Remote', text: segment.text })
+      speaker: transcriptSpeaker(segment, { mic: 'You', system: 'Remote' }), text: segment.text })
     if (lines.length && size + line.length + 1 > maximum) { chunks.push(lines.join('\n')); lines = []; size = 0 }
     lines.push(line); size += line.length + 1
   }

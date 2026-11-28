@@ -10,17 +10,19 @@ export function searchMeetings(store: MeetingStore, input: string) {
     SELECT * FROM (
       SELECT t.meetingId,m.title,'Transcript' category,t.id targetId,t.id segmentId,t.text,
         snippet(transcript_fts,0,char(1),char(2),'…',24) snippet,t.source,
-        s.displayName speaker,t.startMs atMs
+        COALESCE(r.label,s.displayName) speaker,t.startMs atMs
       FROM transcript_fts JOIN transcript_segments t ON t.rowid=transcript_fts.rowid
       JOIN meetings m ON m.id=t.meetingId LEFT JOIN speakers s ON s.meetingId=m.id AND s.source=t.source
+      LEFT JOIN remote_speakers r ON r.meetingId=t.meetingId AND r.segmentId=t.id
       WHERE transcript_fts MATCH ?
       UNION ALL
       SELECT f.meetingId,m.title,f.category,f.targetId,t.id,f.text,
-        snippet(notes_fts,0,char(1),char(2),'…',24),t.source,s.displayName,COALESCE(f.atMs,t.startMs)
+        snippet(notes_fts,0,char(1),char(2),'…',24),t.source,COALESCE(r.label,s.displayName),COALESCE(f.atMs,t.startMs)
       FROM notes_fts f JOIN meetings m ON m.id=f.meetingId
       LEFT JOIN note_sources n ON n.meetingId=f.meetingId AND n.targetId=f.targetId
       LEFT JOIN transcript_segments t ON t.meetingId=n.meetingId AND t.id=n.segmentId
-      LEFT JOIN speakers s ON s.meetingId=t.meetingId AND s.source=t.source WHERE notes_fts MATCH ?
+      LEFT JOIN speakers s ON s.meetingId=t.meetingId AND s.source=t.source
+      LEFT JOIN remote_speakers r ON r.meetingId=t.meetingId AND r.segmentId=t.id WHERE notes_fts MATCH ?
     ) ORDER BY meetingId,COALESCE(atMs,-1),category,targetId LIMIT 200
   `).all(query,query))
 }

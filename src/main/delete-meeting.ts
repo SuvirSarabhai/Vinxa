@@ -23,7 +23,7 @@ export async function deleteMeeting(store:MeetingStore,id:string,erase=eraseFile
  const paths=await managedFiles(store.userData,id,[meeting.microphoneAudioPath,meeting.systemAudioPath])
  store.db.transaction(()=>{
   store.db.prepare("INSERT INTO deletion_jobs VALUES (?,'files',NULL) ON CONFLICT(meetingId) DO UPDATE SET error=NULL").run(id)
-  for(const table of ['transcript_segments','meeting_notes','decisions','action_items','notes_queue'])store.db.prepare('DELETE FROM '+table+' WHERE meetingId=?').run(id)
+  for(const table of ['bookmarks','crm_deliveries','transcript_segments','meeting_notes','decisions','action_items','notes_queue'])store.db.prepare('DELETE FROM '+table+' WHERE meetingId=?').run(id)
   store.notesStatus(id,'failed','Deletion in progress. If interrupted, use Delete meeting again to finish.')
  })()
  try{
@@ -35,7 +35,7 @@ export async function deleteMeeting(store:MeetingStore,id:string,erase=eraseFile
   const checkpoint=()=>{const rows=store.db.pragma('wal_checkpoint(TRUNCATE)') as {busy:number}[];if(rows.some(row=>row.busy))throw new Error('Database checkpoint is busy.')}
   checkpoint()
   store.db.exec('VACUUM')
-  for(const table of ['transcript_segments','meeting_notes','decisions','action_items','notes_fts','note_sources'])
+  for(const table of ['bookmarks','crm_deliveries','remote_speakers','transcript_segments','meeting_notes','decisions','action_items','notes_fts','note_sources'])
    if(store.db.prepare('SELECT 1 FROM '+table+' WHERE meetingId=?').get(id))throw new Error('Meeting records remain.')
   store.db.prepare('DELETE FROM meetings WHERE id=?').run(id)
   checkpoint()

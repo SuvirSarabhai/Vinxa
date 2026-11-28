@@ -3,6 +3,7 @@ import template from './template.html?raw'
 import { meetingDetailSchema } from '../../shared/meetings'
 import type { MeetingDetail } from '../../shared/meetings'
 import { elapsed } from './markdown'
+import { transcriptSpeaker } from '../../shared/speaker-label'
 export function escapeHtml(text:string):string {return text.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!))}
 export function meetingHtml(input:MeetingDetail):string {
  const d=meetingDetailSchema.parse(input),m=d.meeting,e=escapeHtml
@@ -13,7 +14,8 @@ export function meetingHtml(input:MeetingDetail):string {
  '<section><h2>Summary</h2><p>'+e(d.insights?.summary??'Notes are not available.')+'</p></section>'+
  '<section><h2>Decisions</h2><ul>'+(d.insights?.decisions.map(x=>'<li>['+elapsed(x.atMs)+'] '+e(x.text)+'</li>').join('')||'<li>No saved decisions.</li>')+'</ul></section>'+
  '<section><h2>Actions</h2><ul>'+(d.actions.map(x=>'<li>['+(x.status==='done'?'x':' ')+'] '+e(x.task)+' — '+e(x.owner??'Unassigned')+' — '+e(x.due??'Unspecified')+'</li>').join('')||'<li>No saved actions.</li>')+'</ul></section>'+
- '<section class="transcript"><h2>Transcript</h2>'+([...d.transcript].sort((a,b)=>a.startMs-b.startMs||a.endMs-b.endMs||a.id.localeCompare(b.id)).map(s=>'<p><time>['+elapsed(s.startMs)+']</time> <strong>'+e(d.speakers[s.source])+':</strong> '+e(s.text)+'</p>').join('')||'<p>No finalized transcript.</p>')+'</section>'
+ (d.bookmarks?.length?'<section><h2>Bookmarks</h2><ul>'+d.bookmarks.map(b=>'<li>['+elapsed(b.atMs)+'] '+e(b.note)+'</li>').join('')+'</ul></section>':'')+
+ '<section class="transcript"><h2>Transcript</h2>'+([...d.transcript].sort((a,b)=>a.startMs-b.startMs||a.endMs-b.endMs||a.id.localeCompare(b.id)).map(s=>'<p><time>['+elapsed(s.startMs)+']</time> <strong>'+e(transcriptSpeaker(s,d.speakers))+':</strong> '+e(s.text)+'</p>').join('')||'<p>No finalized transcript.</p>')+'</section>'
  return template.replace('{{CONTENT}}',content)
 }
 export async function meetingPdf(detail:MeetingDetail):Promise<Buffer> {
