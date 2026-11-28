@@ -2,8 +2,13 @@ import { useState } from 'react'
 import type { Phase2Snapshot } from '../../../shared/phase2'
 import { Icon } from './Icon'
 import { Transcript } from './Transcript'
+import { SavedMeetings } from './SavedMeetings'
 
 export function Library({ snapshot }: { snapshot: Phase2Snapshot }) {
+  return snapshot.mode === 'demo' ? <DemoLibrary snapshot={snapshot} /> : <SavedMeetings />
+}
+
+function DemoLibrary({ snapshot }: { snapshot: Phase2Snapshot }) {
   const [details, setDetails] = useState(false)
   const [tab, setTab] = useState('Transcript')
   if (details && snapshot.sessionId)

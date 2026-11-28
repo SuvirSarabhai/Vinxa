@@ -61,6 +61,7 @@ async function finish(): Promise<void> {
 
 async function deviceChanged(): Promise<void> {
   if (source === 'system') {
+    if(parameters.get('liveDeviceRecovery')==='1')return // Native Windows monitor identifies output changes; a mic unplug must not stop system audio.
     // Hidden documents can be unable to enumerate outputs. Do not wait to stop.
     stop('Audio devices changed during system capture; check Windows default output and repeat the test')
     return
@@ -194,7 +195,7 @@ async function start(): Promise<void> {
     console.info('[vinxa-capture] audio context running')
     started = true
     if (stopping) { await finish(); return }
-    await bridge.ready()
+    await bridge.ready(source==='mic'?track.getSettings().deviceId:undefined)
   } catch (error) {
     const name = error instanceof DOMException ? error.name : ''
     const label = source === 'mic' ? 'Microphone' : 'System audio'

@@ -1,16 +1,18 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 const fake = vi.hoisted(() => ({ initialize: vi.fn().mockResolvedValue(undefined),
   shutdown: vi.fn().mockResolvedValue(undefined), handlers: new Map<string, any>(), quit: vi.fn(),
-  disposePhase2: vi.fn(), installPhase2: vi.fn(), unhook: vi.fn(),
+  disposePhase2: vi.fn(), installPhase2: vi.fn(), unhook: vi.fn(), intercept:vi.fn(),
   capture: vi.fn(), captureStop: vi.fn().mockResolvedValue(undefined), exit: vi.fn() }))
 vi.mock('./speech-service', () => ({ initializeAppSpeech: fake.initialize,
   getAppSpeech: () => ({ shutdown: fake.shutdown }) }))
+vi.mock('./db/repository', () => ({ MeetingStore: class { setting() { return '{"speechModel":"small"}' } } }))
 vi.mock('./phase2', () => ({ installPhase2: fake.installPhase2 }))
 vi.mock('./audio/capture-test', () => ({ startCaptureTest: fake.capture }))
 vi.mock('./fixture-player', () => ({ FixturePlayer: class { stop() {} } }))
 vi.mock('electron', () => ({
+  session:{defaultSession:{webRequest:{onBeforeRequest:fake.intercept}}},
   app: { requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(),
-    getAppPath: () => 'D:/test', quit: fake.quit, exit: fake.exit,
+    getAppPath: () => 'D:/test', getPath: () => 'D:/test', quit: fake.quit, exit: fake.exit,
     on: (name: string, callback: any) => fake.handlers.set(name, callback) },
   ipcMain: { handle: vi.fn() }, Menu: { buildFromTemplate: vi.fn() },
   Tray: class { setToolTip() {} setContextMenu() {} on() {} },
@@ -39,6 +41,11 @@ it('initializes speech and controls, cleans up UI once, and awaits speech shutdo
   await import('./index')
   await vi.waitFor(() => expect(fake.initialize).toHaveBeenCalledOnce())
   expect(fake.installPhase2).toHaveBeenCalledOnce()
+  expect(fake.initialize).toHaveBeenCalledWith(expect.anything(), 'small')
+  expect(fake.intercept).toHaveBeenCalledOnce()
+  const callback=vi.fn()
+  fake.intercept.mock.calls[0][1]({url:'https://example.test'},callback)
+  expect(callback).toHaveBeenCalledWith({cancel:true})
   expect(fake.exit).not.toHaveBeenCalled()
   const event = { preventDefault: vi.fn() }
   fake.handlers.get('before-quit')(event)

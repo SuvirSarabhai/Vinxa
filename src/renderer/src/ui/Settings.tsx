@@ -3,6 +3,8 @@ import type { FormEvent } from 'react'
 import { defaultHotkeys, hotkeysSchema } from '../../../shared/phase2'
 import type { Hotkeys, Phase2Snapshot } from '../../../shared/phase2'
 import { Icon } from './Icon'
+import { NotesSettings } from './NotesSettings'
+import { PrivacyStatus } from './PrivacyStatus'
 import type { CommandHandler } from './session'
 
 export function OpacitySetting({ snapshot, command }: { snapshot: Phase2Snapshot; command: CommandHandler }) {
@@ -83,7 +85,7 @@ export function Settings({
     setSaved(await command({ type: 'hotkeys', value: result.data }))
   }
   return (
-    <div className="settings-layout">
+    <><div className="settings-layout">
       <section className="panel settings-main">
         <div className="section-heading">
           <span className="icon-tile">
@@ -188,6 +190,7 @@ export function Settings({
           </button>
           <p className="field-help">
             Drag anywhere except controls and the scrollbar. Collapse keeps Pause, Stop, and Expand available.
+            Minimize and X affect only this overlay. Use Stop to end the session.
           </p>
         </section>
         <section className="panel">
@@ -205,11 +208,10 @@ export function Settings({
             <strong>{snapshot.mode === 'demo' ? 'Written sample' : 'Local speech'}</strong>
           </div>
           <p className="field-help">
-            Saved meeting storage, AI notes, and export settings will be available when those features are
-            implemented.
+            Local sessions save transcripts and separate audio files on this laptop.
           </p>
         </section>
       </aside>
-    </div>
+    </div>{snapshot.mode === 'local' && <><PrivacyStatus snapshot={snapshot} command={command}/><NotesSettings /></>}</>
   )
 }

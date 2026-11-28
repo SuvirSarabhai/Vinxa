@@ -9,7 +9,7 @@ const transitions: Record<RecordingState, RecordingState[]> = {
   'awaiting-consent': ['idle', 'recording'],
   recording: ['paused', 'stopping', 'error'],
   paused: ['recording', 'stopping', 'error'],
-  stopping: ['completed', 'error'],
+  stopping: ['processing', 'completed', 'error'],
   processing: ['completed', 'error'],
   completed: ['awaiting-consent'],
   interrupted: ['awaiting-consent'],
@@ -23,6 +23,7 @@ export class SessionController {
   private announcementCopied = false
   private backendTail: Promise<void> = Promise.resolve()
   private listeners = new Set<() => void>()
+  private readonly initial: SessionSnapshot
   private current: SessionSnapshot
 
   constructor(
@@ -30,13 +31,14 @@ export class SessionController {
     private readonly saveConsent: (record: ConsentRecord) => Promise<void>,
     private readonly clock: () => number = Date.now
   ) {
-    this.current = {
+    this.initial = {
       state: 'idle', mode: backend.mode, busy: false, consentRequest: 0,
       config: { title: 'New meeting', microphoneEnabled: true, systemAudioEnabled: true, microphoneDeviceId: null },
       segments: [], sessionId: null, error: null, pauses: [],
       notice: backend.mode === 'demo' ? 'Written sample only. No audio is captured.' : 'Local recording backend connected.',
       levels: { mic: null, system: null }
     }
+    this.current = structuredClone(this.initial)
     backend.bindOwner?.({
       getState: () => this.current.state,
       hasConsent: (sessionId) => this.current.sessionId === sessionId &&
@@ -48,7 +50,22 @@ export class SessionController {
     return structuredClone(this.current)
   }
 
+  forgetDeletedMeeting(id: string): void {
+    if (this.current.sessionId !== id) return
+    const { consentRequest, state, busy } = this.current
+    this.current = { ...structuredClone(this.initial), consentRequest, busy,
+      state: state === 'awaiting-consent' ? state : 'idle' }
+    this.publish()
+  }
+
   getState(): RecordingState { return this.current.state }
+  async selectMicrophone(deviceId:string):Promise<void>{
+    if(this.disposed||this.current.busy||this.current.state!=='paused'||!this.current.config.microphoneEnabled||!this.backend.selectMicrophone)throw new Error('Pause an active microphone session before changing its device.')
+    await this.backend.selectMicrophone(deviceId)
+    this.current.config.microphoneDeviceId=deviceId
+    this.current.notice='Microphone selected. Resume to reconnect with the same session timeline.'
+    this.publish()
+  }
 
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
@@ -125,7 +142,7 @@ export class SessionController {
               this.publish()
             },
             notice: (message) => {
-              if (!this.isCurrent(generation) || !['recording', 'paused'].includes(this.current.state)) return
+              if (!this.isCurrent(generation) || !['recording', 'paused', 'stopping', 'processing'].includes(this.current.state)) return
               this.current.notice = message
               this.publish()
             },
@@ -133,6 +150,12 @@ export class SessionController {
               if (!this.isCurrent(generation)) return
               this.current.segments = this.current.segments.filter((segment) => segment.isFinal)
               this.publish()
+            },
+            processing: () => {
+              if (!this.isCurrent(generation) || !this.hasState('stopping')) return
+              this.current.endedAtMs = this.clock()
+              this.current.notice = 'Recording saved. Preparing meeting notes.'
+              this.transition('processing')
             },
             failure: (message) => {
               if (!this.isCurrent(generation) || !['recording', 'paused', 'stopping'].includes(this.current.state)) return
@@ -206,14 +229,15 @@ export class SessionController {
       this.transition('stopping')
       try {
         await this.backend.stop()
-        if (this.disposed || !this.hasState('stopping')) return
+        if (this.disposed || !this.hasState('stopping', 'processing')) return
         this.current.levels = { mic: null, system: null }
-        this.current.notice = 'Session stopped. History and AI notes will be connected in later phases.'
-        this.current.endedAtMs = this.clock()
+        if (this.backend.mode === 'demo' && !this.hasState('processing')) this.current.notice = 'Session stopped.'
+        this.current.endedAtMs ??= this.clock()
         this.transition('completed')
-      } catch {
-        if (!this.hasState('error')) this.fail('The backend could not stop cleanly.')
-        throw new Error('The backend could not stop cleanly.')
+      } catch (error) {
+        const message = 'The backend could not stop cleanly.' + (error instanceof Error ? ' ' + error.message : '')
+        if (!this.hasState('error')) this.fail(message)
+        throw new Error(message)
       } finally {
         this.current.busy = false
         this.publish()

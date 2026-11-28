@@ -11,7 +11,8 @@ from sidecar.engine import WordInference
 from sidecar.local_agreement import Word
 from sidecar.protocol import AudioFrame, ProtocolError, validate
 from sidecar.scheduling import FairQueue
-from sidecar.streaming import StreamingPipeline, StreamingSettings
+from sidecar.streaming import StreamingPipeline, StreamingSettings, Utterance
+from sidecar.local_agreement import LocalAgreement
 
 
 class EnergyScore:
@@ -125,6 +126,33 @@ def test_one_model_two_independent_sources_partial_final_and_padding():
             assert all(e["startMs"] >= 2000 for e in texts if e["source"] == "system")
             assert pipeline.sources["mic"].expected == 24 * 1600 - 123
             assert pipeline.sources["system"].expected == 32000 + 24 * 1600 - 321
+        finally:
+            await pipeline.close()
+    asyncio.run(run())
+
+
+def test_echo_cancels_only_provisional_mic_row_through_real_event_pipeline():
+    async def run():
+        events = []
+        async def emit(event):
+            validate("event", event)
+            events.append(event)
+        pipeline = StreamingPipeline(configuration(), emit, engine=Engine(), scorer_factory=EnergyScore)
+        try:
+            await pipeline.start()
+            remote = Utterance("system", 1, 0, 0, LocalAgreement())
+            mic = Utterance("mic", 1, 0, 0, LocalAgreement())
+            words = [Word("We will review the project tomorrow.", 0, 16000)]
+            await pipeline._text(remote, words, True)
+            await pipeline._text(mic, words, False)
+            await pipeline._text(mic, words, True)
+            await pipeline._flush_events()
+            text = [event for event in events if event["type"] in ("partial", "final")]
+            assert [event["source"] for event in text] == ["system", "mic", "mic"]
+            assert text[0]["text"] == words[0].text
+            assert text[1]["id"] == text[2]["id"]
+            assert text[1]["text"] and text[2]["text"] == ""
+            assert text[2]["type"] == "final"
         finally:
             await pipeline.close()
     asyncio.run(run())

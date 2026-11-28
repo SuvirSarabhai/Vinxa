@@ -327,6 +327,8 @@ async def run_from_environment():
 
 
 def main():
+    from sidecar.network_policy import install
+    install()
     try:
         asyncio.run(run_from_environment())
         return 0

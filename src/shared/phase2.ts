@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { recordingConfigSchema, recordingStateSchema, transcriptSegmentSchema } from './schemas'
-import type { RecordingConfig, RecordingState, TranscriptSegment } from './contracts'
+import type { RecordingConfig, RecordingState, TranscriptSegment, AudioSourceName, AudioFrameMetadata } from './contracts'
 
 export const recordingEngineSchema = z.object({ ready: z.boolean(), message: z.string() }).strict()
 export type RecordingEngine = z.infer<typeof recordingEngineSchema>
@@ -31,6 +31,7 @@ export const phase2CommandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('confirm'), config: recordingConfigSchema, consent: z.literal(true) }).strict(),
   z.object({ type: z.literal('cancel') }).strict(),
   z.object({ type: z.literal('pause-resume') }).strict(),
+  z.object({ type: z.literal('select-microphone'), deviceId: z.string().min(1).max(512) }).strict(),
   z.object({ type: z.literal('stop') }).strict(),
   z.object({ type: z.literal('show-overlay') }).strict(),
   z.object({ type: z.literal('open-library') }).strict(),
@@ -88,6 +89,9 @@ export interface Phase2Api {
 }
 
 export interface BackendEvents {
+  audioFrame?(source: AudioSourceName, pcm: Uint8Array, metadata: AudioFrameMetadata): Promise<void>
+  sourceEnded?(source: AudioSourceName, padding: number): Promise<void>
+  processing?(): void
   transcript(segment: TranscriptSegment): void
   levels(mic: number | null, system: number | null): void
   notice(message: string): void
@@ -100,6 +104,7 @@ export interface RecordingBackend {
   start(config: RecordingConfig, sessionId: string, events: BackendEvents, sessionStartMs?: number): Promise<void>
   pause(): Promise<void>
   resume(): Promise<void>
+  selectMicrophone?(deviceId:string): Promise<void>
   stop(): Promise<void>
   bindOwner?(owner: { getState(): RecordingState; hasConsent(sessionId: string): boolean }): void
   onEngine?(listener: (engine: RecordingEngine) => void): () => void

@@ -17,6 +17,7 @@ export function createSpeechBackend(window: BrowserWindow): RecordingBackend {
   let sessionEpochMs = 0
   let active = false
   let paused = false
+  const endedSources=new Set<AudioSourceName>()
   let lastGeneration: number | undefined
   const listeners = new Set<(engine: RecordingEngine) => void>()
   let engine: RecordingEngine = { ready: speech?.manager.ready ?? false,
@@ -65,7 +66,10 @@ export function createSpeechBackend(window: BrowserWindow): RecordingBackend {
   async function finishSources(): Promise<void> {
     if (!capture || !bridge || !sessionId) return
     for (const [source, padding] of Object.entries(capture.finalPadding)) {
+      if(endedSources.has(source as AudioSourceName))continue
       await bridge.sourceEnd(sessionId, source as AudioSourceName, padding!)
+      await callbacks?.sourceEnded?.(source as AudioSourceName, padding!)
+      endedSources.add(source as AudioSourceName)
     }
   }
 
@@ -81,21 +85,29 @@ export function createSpeechBackend(window: BrowserWindow): RecordingBackend {
       sessionEpochMs = sessionStartMs
       active = true
       paused = false
+      endedSources.clear()
       bridge = speech.createBridge(owner, window)
       const levels: Record<AudioSourceName, number | null> = { mic: null, system: null }
-      capture = new RecordingCapture((source, pcm, metadata) => {
+      capture = new RecordingCapture(async (source, pcm, metadata) => {
+        await events.audioFrame?.(source, pcm, metadata)
         if (!active || !bridge?.frame(id, source, pcm, metadata)) throw new Error('Speech rejected an audio frame.')
       }, (source, value) => {
         levels[source] = value
         events.levels(levels.mic, levels.system)
-      }, fail)
+      }, fail,{notice:message=>events.notice(message),sourceLost:async(source,padding)=>{
+        if(!bridge||endedSources.has(source))return
+        endedSources.add(source)
+        await bridge.sourceEnd(id,source,padding)
+        await events.sourceEnded?.(source,padding)
+        levels[source]=null;events.levels(levels.mic,levels.system)
+      }})
       try {
         await bridge.start({ sessionId: id, meetingId: id, model: speech.selectedModel,
           language: speech.selectedLanguage, enabledSources: [
             ...(config.microphoneEnabled ? ['mic' as const] : []), ...(config.systemAudioEnabled ? ['system' as const] : [])
           ] })
         await capture.start(config, sessionStartMs)
-        events.notice('Live local transcription. Meeting-app mute does not mute Vinxa. Raw audio is not saved in this mode.')
+        events.notice('Live local transcription. Meeting-app mute does not mute Vinxa. Enabled audio sources are saved with this meeting.')
       } catch (error) {
         active = false
         await capture.abort().catch(() => undefined)
@@ -115,8 +127,13 @@ export function createSpeechBackend(window: BrowserWindow): RecordingBackend {
     async resume() {
       if (!active || !paused || !capture || !bridge || !sessionId) throw new Error('No paused recording is active.')
       await bridge.resume(sessionId)
+      endedSources.clear()
       await capture.resume()
       paused = false
+    },
+    async selectMicrophone(deviceId){
+      if(!paused||!capture)throw new Error('Pause before selecting another microphone.')
+      capture.selectMicrophone(deviceId)
     },
     async stop() {
       try {

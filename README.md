@@ -1,5 +1,14 @@
 # Vinxa Desktop
 
+Notes follow-up: recordings complete after audio/text saving, and notes run in
+the background so transcript exports do not wait for the model. See
+[implementation and user-run checks](docs/notes-background-generation-fix.md).
+
+Latest local integration: `origin/navya` at `5cb95f0` includes Phase 3 persistence
+and Phase 4 workflows, together with the local native-overlay controls. See
+[integration status and user-run checks](docs/navya-integration-2026-11-28.md).
+This combined checkout has not been built or tested after the pull.
+
 Vinxa Desktop is a Windows-only, offline-first meeting memory app. It captures the local microphone and system audio from any meeting application, shows a live transcript in a floating overlay, then saves searchable notes, decisions, and action items locally.
 
 The product is built for a short hackathon sprint. The first objective is a reliable local audio-to-transcript loop. AI notes, polish, and stretch features follow only after that loop works in the packaged app.
@@ -11,8 +20,10 @@ and draggable overlay are connected to Developer B's Phase 2 local speech servic
 Normal launch uses live microphone/system transcription after consent. Set
 VINXA_BACKEND=demo explicitly for written fixtures and no audio capture.
 The Stitch frontend is now integrated and has been built and tested, including
-the real speech pipeline with synthetic microphone input. Saved history and AI
-notes remain later-phase work. See [frontend assessment and verification](docs/stitch-frontend-integration.md),
+the real speech pipeline with synthetic microphone input. Phase 3 adds saved
+meetings, separate audio files, source-based echo deduplication, and AI notes.
+See [Phase 3 implementation and acceptance](docs/phase3-completion-report.md),
+[frontend assessment and verification](docs/stitch-frontend-integration.md),
 [local integration setup and checks](docs/phase2-local-integration.md) and
 [Developer A's interface guide](docs/phase-2.md).
 The native main-window X-button issue remains parked; use the tray's Quit action.
@@ -24,7 +35,7 @@ SVG icons, with live recording state throughout. Use `pnpm smoke:ui` after
 uses synthetic speech with the real cached local model.
 
 - **Local-only by default.** Audio, transcripts, and search stay on the laptop. Cloud notes are an explicit opt-in and receive transcript text, never audio.
-- **Two separate audio streams.** Microphone is labelled **You** and WASAPI loopback is labelled **Remote**. Echo deduplication is planned for Phase 3.
+- **Two separate audio streams.** Microphone is labelled **You** and WASAPI loopback is labelled **Remote**. Conservative text echo deduplication preserves committed segments and genuine extended replies.
 - **Consent is enforced.** Recording cannot begin until the user confirms consent. The overlay, tray, and taskbar show a persistent recording state.
 - **Evidence over invention.** Notes use schema validation; unknown owners and dates are `null`, not guesses.
 
@@ -43,15 +54,17 @@ VAD -> faster-whisper -> partial/final transcript events
         |
         v
 Electron main process
-state machine -> SQLite/FTS5 -> local audio spool -> exports
+state machine -> SQLite/FTS5 + local audio spool -> validated notes
         |
         v
 React overlay and library
-live transcript, search, insights, consent, settings
+live transcript, saved meetings, insights, consent, settings
 ```
 
-The capture-to-overlay path is connected. SQLite, raw-audio spooling, saved
-history, search, notes, and export in this target diagram remain later work.
+Capture, SQLite, raw-audio spooling, saved history, and notes are connected.
+Search in Library covers transcripts, summaries, decisions, and actions. Matches in newly generated notes open the supporting transcript passage. Older notes without a saved source open in their original tab. From the meeting detail you can export Markdown or PDF, recover an interrupted session, or delete its local data. Exports and text previously sent to a cloud provider remain under separate control.
+
+Settings includes privacy counters, speech model size (applied on restart), and pending notes. When a provider is unavailable, pending notes retry automatically with increasing delays of up to ten minutes. Local speech models must already be installed. To exercise search, export, deletion, and recovery in a temporary profile after building the Windows package, run `pnpm smoke:phase4 --packaged`. For synthetic microphone capture through Whisper, local notes, restart, search, export, and deletion, set `VINXA_SMOKE_NOTES_MODEL` to an installed Ollama model and run `node scripts/smoke-live-ui.cjs --packaged`. Add `--crash` to terminate the isolated test app during capture and verify recovery and notes regeneration.
 
 ## Technology stack
 
@@ -66,7 +79,7 @@ history, search, notes, and export in this target diagram remain later work.
 | Notes | Ollama locally; OpenAI structured outputs only when cloud notes are enabled |
 | Validation | Zod for IPC, sidecar events, and model output |
 | Local data | SQLite via better-sqlite3, FTS5, WAL mode |
-| Export | Markdown template and Electron `printToPDF` |
+| Export | Markdown and PDF through Electron printToPDF |
 | Packaging | electron-builder; PyInstaller for the sidecar |
 | Tests | Vitest, pytest, fixture harness, jiwer word-error-rate checks |
 
@@ -75,12 +88,10 @@ history, search, notes, and export in this target diagram remain later work.
 ```text
 src/
   shared/      Types, Zod schemas, and IPC channel names.
-  main/        Electron lifecycle, tray, hotkeys, consent, state machine, recovery.
-  db/          SQLite schema, repositories, FTS5 search, deletion.
-  audio/       WAV spool and audio level handling.
-  stt/         Sidecar lifecycle and WebSocket client.
-  insights/    Local and cloud note providers, prompts, chunking.
-  export/      Markdown and PDF export templates.
+  main/        Electron lifecycle, tray, hotkeys, consent, speech and state machine.
+    db/        SQLite migrations, repositories, FTS5 index.
+    audio/     Capture, WAV spool and audio level handling.
+    insights/  Local and cloud note providers, prompts, chunking.
   preload/     Narrow, context-isolated renderer bridge.
   renderer/    Capture window, floating overlay, and React library screens.
 sidecar/       Local transcription service and its Python dependencies.
@@ -91,7 +102,7 @@ docs/          PRD, architecture, privacy, and test-result documentation.
 ## Prerequisites
 
 - Windows 10 or 11, x64
-- Node.js 22+ and pnpm 10+
+- Node.js 24.13+ and the pnpm version pinned in package.json (the verification scripts use Node's TypeScript loader hooks)
 - Python 3.11+
 - Visual Studio Build Tools with the Desktop development with C++ workload (required by `better-sqlite3` when no prebuilt binary is available)
 - A model cache outside this repository; do not commit downloaded speech or LLM models
@@ -115,13 +126,56 @@ pnpm dev
 Wait for the engine-ready message, then Start and confirm consent. The selected
 microphone and Windows default-output audio appear as You and Remote. Pause
 releases capture devices and flushes final words; Resume acquires fresh tracks.
-Stop retains the current transcript on screen. The overlay supports dragging,
+Stop drains speech, finalizes audio, and saves notes or an explicit pending/failed
+notes status. Library restores saved meetings across app restarts. The overlay supports dragging,
 resize, collapse, opacity, and copying recent lines. Hotkeys default to
 Ctrl+Alt+S, Ctrl+Alt+P, and Ctrl+Alt+X.
 
 For UI-only fixtures, set `$env:VINXA_BACKEND='demo'` before `pnpm dev`. Demo mode
 does not start Python, capture audio, or invent meter readings. Set runtime
 options in the launching PowerShell session; `.env.example` is a template.
+
+## Saved meetings and notes
+
+Normal local sessions save under Electron's user-data directory. The database is
+`meetings.sqlite3`; audio is `meetings/<meeting-id>/microphone.wav` and
+`system.wav`, plus `metadata.json`. Disabled sources have no file. These are
+16 kHz mono PCM WAVs. Library supports reopening, renaming, speaker display names,
+summary/decisions/actions, and persisted action completion. Demo mode does not
+create saved meetings.
+
+For local notes, start Ollama and run `ollama list`. In Vinxa Settings → Meeting
+notes, leave the provider as **Ollama · local-only**, enter an installed model's
+exact name, and save. The application only connects to `127.0.0.1:11434` and does
+not download a model or switch to cloud automatically. If Ollama is unavailable
+or the model is missing, the recording stays saved and Notes stays pending.
+After starting Ollama, open the meeting and choose Generate notes.
+
+On this laptop, `llama3:latest` passed a short live recording test with a
+300-second timeout. Both installed models timed out on the ten-minute benchmark
+at the default 180-second timeout. See the [measured benchmark](docs/phase3-notes-benchmark.md)
+before treating long-meeting notes as ready. Review generated notes against the
+transcript; schema validation cannot prove factual accuracy.
+
+OpenAI is optional. In Settings choose **OpenAI · opt-in cloud notes**, explicitly
+check the transcript-sharing consent box, enter a model that supports structured
+outputs and your API key, then save. Only transcript text and derived text notes
+are sent; audio stays local. The key is encrypted by Electron safeStorage on
+Windows, never returned by the settings API, and can be removed in Settings.
+Selecting Ollama or disabling consent prevents subsequent OpenAI requests.
+No live OpenAI call was made during Phase 3 verification.
+
+After `pnpm build`, run `pnpm smoke:phase3` for the real Electron/SQLite restart
+check with seeded notes. For real local speech and live Ollama notes, run
+`$env:VINXA_SMOKE_NOTES_MODEL='llama3:latest'` followed by `pnpm smoke:ui:live`.
+That test uses synthetic speech, an isolated profile, and no physical microphone.
+Clear `VINXA_SMOKE_NOTES_MODEL` afterwards. `pnpm benchmark:notes` compares the
+installed local models on the supplied synthetic ten-minute fixture.
+
+If another application owns the demo smoke's default shortcuts, set
+`$env:VINXA_SMOKE_HOTKEYS='{"start":"Ctrl+Alt+J","pause":"Ctrl+Alt+K","stop":"Ctrl+Alt+L"}'`
+before `pnpm smoke:ui`, then clear that variable. The smoke uses an isolated
+profile and still checks real Windows shortcut registration.
 
 Use `pnpm icons` to regenerate the temporary application/tray icon. `pnpm package:win`
 builds an unsigned NSIS installer and portable executable under `release/`.
@@ -168,12 +222,15 @@ and use headphones for the simultaneous test. No video is saved.
 ## Privacy and data handling
 
 Live audio is processed by the authenticated local speech service after consent.
-This path saves no raw WAV files or permanent transcript history. Consent receipts
-and hotkey settings are stored in Electron's user-data directory. Optional bounded
-diagnostics contain numeric timing/accounting data, not speech text or audio.
-Meeting-app mute does not mute Vinxa's microphone. The opt-in Phase 1 diagnostics
-still save WAV files separately. Persistent history, echo deduplication, the
-broader network guard, deletion, and optional cloud notes remain later work.
+Local sessions save finalized transcripts in SQLite and separate microphone/system
+WAV files under Electron's user-data directory, alongside consent receipts and
+settings. Demo mode uses sample text without capture or saved meeting history.
+Optional bounded diagnostics contain numeric timing/accounting data, not speech
+text or audio. Meeting-app mute does not mute Vinxa's microphone.
+Local-only notes use a configured installed Ollama model. OpenAI notes require
+explicit transcript-sharing consent and provider selection; audio stays local.
+Saved-meeting deletion does not remove exported copies or previously shared cloud
+text, and storage erasure has the limits explained in its confirmation dialog.
 
 ## Delivery order
 

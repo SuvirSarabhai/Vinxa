@@ -1,4 +1,7 @@
-import { app, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, Tray, session } from 'electron'
+import { MeetingStore } from './db/repository'
+import { savedNotesSettings } from './insights/settings'
+import { networkGuard } from './network-guard'
 import { isAbsolute, join } from 'node:path'
 import { getAppSpeech, initializeAppSpeech } from './speech-service'
 import { FixturePlayer } from './fixture-player'
@@ -143,10 +146,13 @@ if (!hasLock) {
     }
   })
   app.whenReady().then(() => {
+    networkGuard.install(session.defaultSession)
+    app.on('session-created',created=>networkGuard.install(created))
     createTray()
     createMainWindow()
+    const store = !captureMode && process.env.VINXA_BACKEND !== 'demo' ? new MeetingStore(app.getPath('userData')) : undefined
     if (mainWindow && (process.env.VINXA_BACKEND !== 'demo' || (captureMode && process.env.VINXA_CAPTURE_SPEECH === '1'))) {
-      void initializeAppSpeech(mainWindow)
+      void initializeAppSpeech(mainWindow, store && savedNotesSettings(store).speechModel)
     }
     fixturePlayer = new FixturePlayer(
       (segment) => mainWindow?.webContents.send(ipcChannels.transcriptSegment, segment),
@@ -170,7 +176,7 @@ if (!hasLock) {
         console.error('Audio diagnostic could not start; check output file and disk space')
       })
     } else {
-      disposePhase2 = installPhase2(mainWindow, tray, openLibrary)
+      disposePhase2 = installPhase2(mainWindow, tray, openLibrary, store)
     }
   }).catch((error: unknown) => {
     console.error('Vinxa startup failed', error)

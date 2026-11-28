@@ -1271,3 +1271,30 @@ input[type='checkbox'] {
     scroll-behavior: auto !important;
   }
 }
+.library-toolbar, .meeting-edit { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.library-toolbar p { margin: auto 0 auto auto; color: var(--muted); }
+.saved-meeting-list { display: grid; gap: 16px; }
+.saved-meeting-list .current-meeting { display: flex; align-items: center; gap: 20px; padding: 24px; }
+.saved-meeting-list .current-meeting > div { flex: 1; min-width: 0; }
+.saved-meeting-list h2 { overflow-wrap: anywhere; }
+.meeting-edit label { display: grid; gap: 8px; flex: 1; min-width: 220px; }
+.saved-items { padding-left: 24px; }
+.saved-items li { margin: 16px 0; line-height: 1.6; }
+.saved-items small { display: block; margin-left: 28px; color: var(--muted); }
+.saved-transcript { max-height: 65vh; overflow-y: auto; }
+.notes-text { white-space: pre-wrap; line-height: 1.7; }
+.notes-settings { padding: 28px; margin-top: 24px; }
+.notes-settings form { display: grid; gap: 16px; max-width: 760px; }
+.notes-settings .check { display: flex; align-items: start; gap: 10px; }
+.notes-settings input[type='checkbox'] { flex-shrink: 0; margin-top: 4px; }
+.notes-settings form > button { justify-self: start; }
+
+.meeting-search { padding: 24px; }
+.meeting-search input { width: 100%; margin: 10px 0; }
+.search-results { display: grid; gap: 10px; padding: 0; list-style: none; }
+.search-results button { width: 100%; text-align: left; display: grid; gap: 6px; white-space: normal; }
+.search-snippet { white-space: pre-wrap; overflow-wrap: anywhere; }
+.search-match { background: #fff2b3; outline: 2px solid #9a7800; outline-offset: 3px; scroll-margin: 24px; }
+mark { background: #ffe68a; color: #12343c; }
+.library-toolbar { flex-wrap: wrap; }
+.notes-settings { margin-top: 24px; }

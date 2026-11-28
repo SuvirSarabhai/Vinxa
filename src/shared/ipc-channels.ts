@@ -1,4 +1,6 @@
 export const ipcChannels = {
+  meetingsRecover: 'meetings:recover', privacyStatus: 'privacy:status', notesRetryPending: 'notes:retry-pending',
+  meetingsChanged: 'event:meetings-changed', actionUpdate: 'actions:update', notesGenerate: 'notes:generate',
   recordingStart: 'recording:start', recordingPause: 'recording:pause',
   recordingResume: 'recording:resume', recordingStop: 'recording:stop',
   meetingsList: 'meetings:list', meetingsGet: 'meetings:get', meetingsSearch: 'meetings:search',

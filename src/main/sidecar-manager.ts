@@ -3,6 +3,7 @@ import type { ChildProcess, SpawnOptions } from 'node:child_process'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { AudioFrameMetadata, AudioSourceName, SidecarConfig, SidecarControl,
@@ -37,11 +38,27 @@ function deferred<T>() {
 }
 export class SidecarOperationError extends Error {}
 
+export function installedSpeechModel(resourcesPath: string, model: string): string | undefined {
+  if (!['base.en', 'small', 'tiny.en'].includes(model)) return
+  const complete = (directory: string) => ['model.bin', 'config.json', 'tokenizer.json'].every(file => existsSync(join(directory, file)))
+  const bundled = join(resourcesPath, 'sidecar', 'models', model)
+  if (complete(bundled)) return bundled
+  const cache = process.env.VINXA_MODEL_DIR || join(process.env.LOCALAPPDATA || join(homedir(), '.cache'), 'Vinxa', 'models')
+  const repository = join(cache, 'models--Systran--faster-whisper-' + model)
+  try {
+    const revision = readFileSync(join(repository, 'refs', 'main'), 'utf8').trim()
+    if (/^[0-9a-f]{40}$/i.test(revision)) {
+      const snapshot = join(repository, 'snapshots', revision)
+      if (complete(snapshot)) return snapshot
+    }
+  } catch { /* The selected model has no local snapshot. */ }
+  return undefined
+}
+
 export function resolveSidecarRuntime(paths: { appPath: string; resourcesPath: string; packaged: boolean },
-  configuredPython?: string): SidecarRuntime {
+  configuredPython?: string, model = process.env.VINXA_SPEECH_MODEL || 'base.en'): SidecarRuntime {
   const bundled = join(paths.resourcesPath, 'sidecar', process.platform === 'win32' ? 'vinxa-sidecar.exe' : 'vinxa-sidecar')
   if (paths.packaged && existsSync(bundled)) {
-    const model = process.env.VINXA_SPEECH_MODEL || 'base.en'
     const modelPath = join(paths.resourcesPath, 'sidecar', 'models', model)
     return { command: bundled, args: [], env: {
       HF_HUB_OFFLINE: '1', TRANSFORMERS_OFFLINE: '1',

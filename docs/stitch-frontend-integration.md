@@ -1,5 +1,36 @@
 # Stitch frontend integration — 28 November 2026
 
+Later update: [navya integration](navya-integration-2026-11-28.md) adds the saved
+meeting, notes, search/export and deletion backends described as future work in
+the historical Stitch assessment below. Its combined validation is user-run.
+
+## Native overlay controls follow-up
+
+The overlay now requests the standard Windows title bar with Minimize,
+Maximize/Restore and Close. The square button maximizes the window; it is separate
+from the in-app Collapse control. Minimize keeps the session running. Close hides
+only the overlay, and Show overlay reopens it, restoring a minimized window when
+needed. Pause/Resume no longer reopens an overlay that the user dismissed.
+Recording ends through Stop, not by closing the transcript window.
+
+Compact and expanded sizes now measure usable content separately from the native
+title bar and borders. Maximizing a compact overlay reveals the full transcript.
+Dragging within web content is suspended while maximized or in fullscreen.
+
+The desktop smoke script has additional assertions for the native frame/control
+capabilities, minimize/restore, maximize/restore, hiding/reopening the overlay,
+and compact content height. These follow-up changes have not been built or tested
+by Codex; run the commands below yourself. Verification figures later in this
+document describe the previous tested UI revision.
+
+```powershell
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm smoke:ui
+pnpm dev
+```
+
 ## Assessment of the supplied export
 
 The supplied folder contains seven HTML screens and one design-system document.

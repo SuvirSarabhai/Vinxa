@@ -12,6 +12,7 @@ import numpy as np
 
 from .audio_buffer import AudioBuffer
 from .diagnostics import Diagnostics
+from .dedup import EchoDeduplicator
 from .engine import SpeechEngine
 from .local_agreement import LocalAgreement
 from .protocol import ProtocolError
@@ -123,6 +124,7 @@ class StreamingPipeline:
                                             model_path=os.environ.get("VINXA_SPEECH_MODEL_PATH") or None)
         self.scorer_factory = scorer_factory
         self.diagnostics = Diagnostics()
+        self.dedup = EchoDeduplicator()
         self.last_dequeued = {}
         self.sources = {}
         self.queue = FairQueue(config["enabledSources"], self.settings.queue_per_source)
@@ -505,10 +507,16 @@ class StreamingPipeline:
             utterance.chunk += 1
         self.diagnostics.record("text_emitting", utterance.source, **trace)
         timing = self._event_timing(job, start, end)
-        await self._emit({"type": "final" if final else "partial", "source": utterance.source,
+        event = {"type": "final" if final else "partial", "source": utterance.source,
                           "id": f"{self.config['sessionId']}:{self.config['generation']}:{utterance.source}:{utterance.number}:{chunk}",
                           "text": text, "startMs": round(start / 16), "endMs": round(end / 16),
-                          **({"timing": timing} if timing else {})}, trace=trace)
+                          **({"timing": timing} if timing else {})}
+        keep, reason = self.dedup.inspect(event)
+        self.diagnostics.record("dedup_" + reason, utterance.source)
+        if not keep:
+            # An empty final cancels any provisional row using the existing protocol.
+            event["text"] = ""
+        await self._emit(event, trace=trace)
 
     async def _run(self):
         loop = asyncio.get_running_loop()

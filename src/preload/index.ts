@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { CaptureBridge, DesktopApi } from '../shared/contracts'
 import { createPhase2Api } from './phase2'
+import { createMeetingsApi } from './meetings'
 import { ipcChannels } from '../shared/ipc-channels'
 import { audioFrameMetadataSchema, captureFrameDiagnosticsSchema, captureFinishedSchema, fixtureCommandSchema, fixtureStatusSchema,
   sidecarEventSchema, transcriptSegmentSchema } from '../shared/schemas'
@@ -44,13 +45,14 @@ const desktopApi: DesktopApi = {
     return () => ipcRenderer.removeListener(ipcChannels.fixtureStatus, handler)
   }
 }
+contextBridge.exposeInMainWorld('vinxaMeetings', createMeetingsApi())
 
 contextBridge.exposeInMainWorld('vinxa', desktopApi)
 contextBridge.exposeInMainWorld('vinxaPhase2', createPhase2Api())
 
 const captureBridge: CaptureBridge = {
   clockSync: (clientSendMs) => ipcRenderer.invoke(ipcChannels.captureClock, clientSendMs),
-  ready: () => ipcRenderer.invoke(ipcChannels.captureReady),
+  ready: (deviceId) => ipcRenderer.invoke(ipcChannels.captureReady,deviceId),
   frame: (frame, metadata, diagnostics) => {
     validatePcmFrame(frame)
     if (diagnostics !== undefined) return ipcRenderer.invoke(ipcChannels.captureFrame, frame,

@@ -17,10 +17,13 @@ def selected_model(model, path=None):
     if model not in MODELS:
         raise ValueError("Unsupported bundled model")
     if path is None:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import try_to_load_from_cache
         from .engine import model_cache
-        path = snapshot_download(repo_id=f"Systran/faster-whisper-{model}",
-                                 cache_dir=str(model_cache()), local_files_only=True)
+        weights = try_to_load_from_cache(repo_id=f"Systran/faster-whisper-{model}",
+                                         filename="model.bin", cache_dir=str(model_cache()))
+        if not isinstance(weights, str):
+            raise ValueError("The selected model is missing from the cache. Prepare the model cache first.")
+        path = Path(weights).parent
     directory = Path(path).expanduser().resolve()
     for required in ("model.bin", "config.json", "tokenizer.json"):
         if not (directory / required).is_file():

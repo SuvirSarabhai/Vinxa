@@ -18,8 +18,11 @@
     "smoke:win": "node scripts/smoke.cjs",
     "smoke:ui": "node scripts/smoke-ui.cjs",
     "smoke:ui:live": "node scripts/smoke-live-ui.cjs",
+    "smoke:phase4": "node scripts/smoke-phase4.cjs",
+    "smoke:phase3": "node scripts/smoke-phase3.cjs",
+    "benchmark:notes": "node scripts/benchmark-notes.cjs",
     "sidecar:build": "node scripts/build-sidecar.cjs",
-    "package:win": "pnpm sidecar:build && pnpm build && electron-builder --win nsis portable"
+    "package:win": "node scripts/build-sidecar.cjs && electron-vite build && electron-builder --win nsis portable"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^1.0.1",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
@@ -44,4 +48,3 @@
     "vitest": "^4.0.0"
   }
 }
-

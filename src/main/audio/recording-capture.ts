@@ -38,12 +38,17 @@ export class RecordingCapture {
   private padding: Partial<Record<AudioSourceName, number>> = {}
 
   constructor(
-    private readonly frame: (source: AudioSourceName, pcm: Uint8Array, metadata: AudioFrameMetadata) => void,
+    private readonly frame: (source: AudioSourceName, pcm: Uint8Array, metadata: AudioFrameMetadata) => void | Promise<void>,
     private readonly level: (source: AudioSourceName, value: number) => void,
-    private readonly failure: (message: string) => void
+    private readonly failure: (message: string) => void,
+    private readonly recovery?: {notice:(message:string)=>void;sourceLost:(source:AudioSourceName,padding:number)=>Promise<void>}
   ) {}
 
   get finalPadding(): Partial<Record<AudioSourceName, number>> { return { ...this.padding } }
+  selectMicrophone(deviceId:string):void{
+    if(!this.config||this.run||!this.config.microphoneEnabled)throw new Error('Pause before selecting another microphone.')
+    this.config={...this.config,microphoneDeviceId:deviceId}
+  }
 
   async start(config: RecordingConfig, sessionStartMs = performance.now()): Promise<void> {
     if (this.run || this.config) throw new Error('Audio capture is already initialized.')
@@ -100,9 +105,10 @@ export class RecordingCapture {
         if (typeof clientSendMs !== 'number' || !Number.isFinite(clientSendMs)) throw new Error('Invalid capture clock request.')
         return { mainReceiveMs, mainSendMs: performance.now(), sessionStartMs: this.epoch }
       })
-      ipcMain.handle(ipcChannels.captureReady, (event) => {
+      ipcMain.handle(ipcChannels.captureReady, (event, deviceId?:unknown) => {
         const source = this.authorize(run, event)
         if (run.stopping || source.finished) return
+        if(source.name==='mic'&&this.config&&typeof deviceId==='string'&&deviceId.length>0&&deviceId.length<=512)this.config={...this.config,microphoneDeviceId:deviceId}
         source.ready = true
         if (run.sources.every((item) => item.ready)) { clearTimeout(run.startupTimer); run.ready.resolve() }
       })
@@ -134,17 +140,23 @@ export class RecordingCapture {
         let energy = 0
         for (let index = 0; index < 1600; index++) energy += (samples.getInt16(index * 2, true) / 32768) ** 2
         this.level(source.name, Math.min(1, Math.sqrt(energy / 1600) * 4))
-        this.frame(source.name, bytes.subarray(1), metadata)
+        const written = this.frame(source.name, bytes.subarray(1), metadata)
         speechDiagnostics.record('capture_ipc_handled', source.name, 1600, {
           sequence: metadata.sequence!, durationMs: performance.now() - receivedAt
         })
+        return written
       })
-      ipcMain.handle(ipcChannels.captureFinished, (event, payload: unknown) => {
+      ipcMain.handle(ipcChannels.captureFinished, async (event, payload: unknown) => {
         const source = this.authorize(run, event)
         const result = captureFinishedSchema.parse(payload)
         source.finished = true
         source.padding = result.error ? 0 : result.paddedSamples
-        if (result.error) this.fail(run, result.error)
+        if(this.recovery&&!run.stopping&&source.name==='mic'&&source.ready&&run.sources.some(other=>other.name==='system'&&other.ready&&!other.finished)&&
+          result.error&&/mic audio track ended|Microphone was disconnected/i.test(result.error)){
+          this.recovery.notice('Microphone disconnected. System audio continues. Reconnect the microphone, then Pause and Resume; or select another microphone in Settings while paused.')
+          try{await this.recovery.sourceLost('mic',source.padding)}catch{this.fail(run,'The lost microphone could not be finalized.')}
+        }
+        else if (result.error) this.fail(run, result.error)
         else if (!run.stopping) this.fail(run, 'An audio source ended unexpectedly. Start a new session.')
         if (run.sources.every((item) => item.finished)) run.done.resolve()
       })
@@ -165,13 +177,14 @@ export class RecordingCapture {
         const script = app.isPackaged ? join(process.resourcesPath, 'audio/default-output.ps1')
           : join(__dirname, '../../resources/audio/default-output.ps1')
         run.monitor = await watchWindowsDefaultOutput(script,
-          () => this.fail(run, 'Windows default output changed. Start a new session on the new output.'),
-          () => this.fail(run, 'Windows output monitoring stopped. Start a new session.'))
+          () => this.recovery?this.recovery.notice('Windows default output changed. Automatic switching is not supported. Pause and Resume to capture the new output; audio may be missing until then.'):this.fail(run, 'Windows default output changed. Start a new session on the new output.'),
+          () => this.recovery?this.recovery.notice('Windows output monitoring stopped. Check your output device; Pause and Resume to reconnect.'):this.fail(run, 'Windows output monitoring stopped. Start a new session.'))
         if (run.cleaned) { await run.monitor.stop(); throw new Error('Capture startup was cancelled.') }
       }
       run.startupTimer = setTimeout(() => this.fail(run, 'Audio startup timed out. Check audio permissions and devices.'), 20000)
       await Promise.all(run.sources.map((source) => {
         const query: Record<string, string> = { source: source.name, micGain: String(source.name === 'mic' ? this.gain : 1) }
+        if(this.recovery)query.liveDeviceRecovery='1'
         if (source.name === 'mic' && config.microphoneDeviceId) query.microphoneDeviceId = config.microphoneDeviceId
         if (process.env.VINXA_DIAGNOSTICS_DIR) query.diagnostics = '1'
         return process.env.ELECTRON_RENDERER_URL

@@ -37,6 +37,24 @@ afterEach(async () => {
 })
 
 describe('production capture coordinator', () => {
+  it('keeps system audio after mic loss, finalizes the lost source, and supports an explicit replacement on the same timeline',async()=>{
+    vi.stubEnv('ELECTRON_RENDERER_URL','')
+    const frame=vi.fn(),failure=vi.fn(),notice=vi.fn(),sourceLost=vi.fn().mockResolvedValue(undefined)
+    capture=new RecordingCapture(frame,vi.fn(),failure,{notice,sourceLost})
+    await capture.start({title:'Devices',microphoneEnabled:true,systemAudioEnabled:true,microphoneDeviceId:'original'},100)
+    await fake.handlers.get(ipcChannels.captureFinished)!({senderFrame:fake.windows[0].frame},{error:'mic audio track ended',paddedSamples:0})
+    expect(sourceLost).toHaveBeenCalledExactlyOnceWith('mic',0)
+    const system=new ArrayBuffer(3201);new Uint8Array(system)[0]=1
+    fake.handlers.get(ipcChannels.captureFrame)!({senderFrame:fake.windows[1].frame},system,{sequence:0,startSample:16000,captureTimeMs:1100,captureErrorMs:1,sampleCount:1600,captureKind:'render-estimate'})
+    expect(frame).toHaveBeenCalled();expect(failure).not.toHaveBeenCalled();expect(notice).toHaveBeenCalledWith(expect.stringContaining('System audio continues'))
+    fake.changed!();expect(notice).toHaveBeenCalledWith(expect.stringContaining('default output changed'));expect(failure).not.toHaveBeenCalled()
+    expect(()=>capture!.selectMicrophone('replacement')).toThrow('Pause')
+    await capture.stop();capture.selectMicrophone('replacement');await capture.resume()
+    expect(fake.windows[2].loadFile.mock.calls[0][1].query.microphoneDeviceId).toBe('replacement')
+    expect(fake.handlers.get(ipcChannels.captureClock)!({senderFrame:fake.windows[2].frame},0).sessionStartMs).toBe(100)
+    expect(fake.windows.slice(0,2).every(window=>window.destroyed)).toBe(true)
+    await capture.stop()
+  })
   it('passes forward acquisition gaps to speech but rejects overlapping or skipped-sequence packets', async () => {
     vi.stubEnv('ELECTRON_RENDERER_URL', '')
     const frame = vi.fn()
