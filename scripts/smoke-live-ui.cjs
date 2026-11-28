@@ -213,7 +213,12 @@ async function main() {
     await page.bringToFront()
     await page.screenshot({ path: join(artifacts, 'dashboard-live-synthetic.png'), fullPage: true })
     console.log('PASS: Stop finalized real synthetic speech without capture/clock/IPC errors')
-    const saved = await page.evaluate(id => window.vinxaMeetings.get(id), finished.sessionId)
+    let saved = await page.evaluate(id => window.vinxaMeetings.get(id), finished.sessionId)
+    const notesDeadline = Date.now() + 650000
+    while (process.env.VINXA_SMOKE_NOTES_MODEL && ['pending', 'processing'].includes(saved.meeting.notesStatus) && Date.now() < notesDeadline) {
+      await page.waitForTimeout(500)
+      saved = await page.evaluate(id => window.vinxaMeetings.get(id), finished.sessionId)
+    }
     assert.equal(saved.meeting.recordingStatus, 'completed')
     assert.equal(saved.transcript.length, report.finalSegments)
     assert.ok(saved.meeting.microphoneAudioPath)

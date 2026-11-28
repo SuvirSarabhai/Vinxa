@@ -190,6 +190,7 @@ export function Settings({
           </button>
           <p className="field-help">
             Drag anywhere except controls and the scrollbar. Collapse keeps Pause, Stop, and Expand available.
+            Minimize and X affect only this overlay. Use Stop to end the session.
           </p>
         </section>
         <section className="panel">

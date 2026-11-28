@@ -76,7 +76,7 @@ export interface AudioSpooler {
   endSource(source: AudioSourceName, padding: number): Promise<void>
   finalize(): Promise<{ microphoneAudioPath: string | null; systemAudioPath: string | null }>
 }
-export interface NotesRequest { prompt: string }
+export interface NotesRequest { prompt: string; allowedSourceIds?: readonly string[] }
 export interface ProviderResponse {
   content: string
   metrics: { durationMs: number; loadMs?: number; inputTokens?: number; outputTokens?: number }

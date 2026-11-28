@@ -30,19 +30,15 @@ export function withMeetingPersistence(backend: RecordingBackend, store: Meeting
         changed()
         throw new Error(session.failure)
       }
-      store.recording(session.id, 'processing', session.endedAt)
-      session.events.processing?.()
-      try {
-        await notes.generate(session.id)
-        store.recording(session.id, 'completed', session.endedAt)
-      } catch (error) {
-        store.recording(session.id, 'error', session.endedAt, 'Notes persistence failed. ' + errorMessage(error))
-        changed()
-        throw error
-      }
-      const saved = store.meeting(session.id)
-      session.events.notice(saved.notesMessage ?? 'Meeting and audio saved.')
+      // Recording completion depends on durable audio/text, not LLM speed.
+      // MeetingNotesService owns and drains its background jobs on shutdown.
+      store.recording(session.id, 'completed', session.endedAt)
+      session.events.notice('Recording and transcript saved. Notes are generating in the background; transcript export is available.')
       changed()
+      void notes.generate(session.id).catch(() => {
+        store.notesStatus(session.id, 'failed', 'Notes could not be saved. The recording and transcript remain available; retry notes.')
+        changed()
+      })
     })().finally(() => { current = undefined; stopping = undefined })
     return stopping
   }

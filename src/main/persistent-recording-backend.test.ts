@@ -8,9 +8,9 @@ import { withMeetingPersistence } from './persistent-recording-backend'
 import { SessionController } from './session-controller'
 import { MeetingNotesService } from './insights/meeting-notes'
 import { NotesSettingsStore } from './insights/settings'
-const folders: string[] = [], stores: MeetingStore[] = []
+const folders: string[] = [], stores: MeetingStore[] = [], services: MeetingNotesService[] = []
 const config = { title: 'Saved session', microphoneEnabled: true, systemAudioEnabled: true, microphoneDeviceId: null }
-afterEach(() => { for (const s of stores.splice(0)) if (s.db.open) s.close(); for (const f of folders.splice(0)) rmSync(f, { recursive: true, force: true }) })
+afterEach(async () => { await Promise.all(services.splice(0).map(service => service.drain())); for (const s of stores.splice(0)) if (s.db.open) s.close(); for (const f of folders.splice(0)) rmSync(f, { recursive: true, force: true }) })
 function setup(fail = false) {
   const folder = mkdtempSync(join(tmpdir(), 'vinxa-persistence-')); folders.push(folder)
   const store = new MeetingStore(folder); stores.push(store)
@@ -37,15 +37,17 @@ function setup(fail = false) {
     name: 'mock', model: 'unavailable', available: async () => ({ available: false }), generate: vi.fn()
   }))
   const wrapped = withMeetingPersistence(backend, store, notes, () => {})
+  services.push(notes)
   const controller = new SessionController(wrapped, async () => {})
   return { store, backend, controller, wrapped, notes, folder }
 }
 describe('Stop persistence integration (real SQLite/files, mock capture/provider)', () => {
-  it('drains final text and audio, awaits notes, survives duplicate Stop and restart', async () => {
+  it('drains final text and audio, survives duplicate Stop and restart', async () => {
     const test = setup()
     test.controller.requestStart(); await test.controller.confirm(config, true)
     const id = test.controller.snapshot().sessionId!
     await Promise.all([test.controller.stop(), test.controller.stop()])
+    await test.notes.drain()
     expect(test.backend.stop).toHaveBeenCalledTimes(1)
     expect(test.controller.snapshot().state).toBe('completed')
     const saved = test.store.get(id)
@@ -67,16 +69,16 @@ describe('Stop persistence integration (real SQLite/files, mock capture/provider
     expect(saved.transcript).toHaveLength(1)
     expect(readFileSync(saved.meeting.systemAudioPath!).readUInt32LE(40)).toBe(3200)
   })
-  it('awaits notes work before declaring the controller completed', async () => {
+  it('completes the recording and exposes durable text while notes are still running', async () => {
     const test = setup()
     let finish!: () => void
     vi.spyOn(test.notes, 'generate').mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
     test.controller.requestStart(); await test.controller.confirm(config, true)
-    const stopping = test.controller.stop()
-    await vi.waitFor(() => expect(test.controller.snapshot().state).toBe('processing'))
-    expect(test.controller.snapshot().busy).toBe(true)
-    expect(test.store.list().meetings[0].recordingStatus).toBe('processing')
-    finish(); await stopping
+    await test.controller.stop()
+    expect(test.controller.snapshot().busy).toBe(false)
+    expect(test.store.list().meetings[0].recordingStatus).toBe('completed')
+    expect(test.store.transcript(test.controller.snapshot().sessionId!)).toHaveLength(1)
+    finish()
     expect(test.controller.snapshot().state).toBe('completed')
   })
   it('preserves finalized recordings when the notes provider fails', async () => {
@@ -100,6 +102,7 @@ describe('Stop persistence integration (real SQLite/files, mock capture/provider
     test.controller.requestStart(); await test.controller.confirm(config, true)
     const id = test.controller.snapshot().sessionId!
     await test.controller.stop()
+    await test.notes.drain()
     test.store.replaceInsights(id, { summary: 'Saved', decisions: [], actionItems: [
       { task: 'Review', owner: null, due: null, status: 'pending' }
     ] }, 'ollama', 'local')

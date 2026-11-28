@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { NotesProvider, NotesRequest } from '../../shared/meetings'
-import { citedNotesSchema } from './prompts'
+import { notesResponseSchema } from './prompts'
 import { requestJson, ProviderUnavailable } from './http'
 import type { Fetcher } from './http'
 import { guardedFetch } from '../network-guard'
@@ -27,7 +27,7 @@ export class OpenAINotesProvider implements NotesProvider {
     const result = responseSchema.parse(await requestJson(this.fetcher, 'https://api.openai.com/v1/responses', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + apiKey },
       body: JSON.stringify({ model: this.model, store: false, input: request.prompt,
-        text: { format: { type: 'json_schema', name: 'meeting_insights', strict: true, schema: z.toJSONSchema(citedNotesSchema) } } })
+        text: { format: { type: 'json_schema', name: 'meeting_insights', strict: true, schema: z.toJSONSchema(notesResponseSchema(false, request.allowedSourceIds)) } } })
     }, this.timeoutMs))
     if (result.status !== 'completed') throw new Error('OpenAI did not complete the notes response.')
     const content = result.output.flatMap(item => item.content ?? []).filter(item => item.type === 'output_text').map(item => item.text ?? '').join('')

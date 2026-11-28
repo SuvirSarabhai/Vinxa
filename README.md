@@ -1,5 +1,14 @@
 # Vinxa Desktop
 
+Notes follow-up: recordings complete after audio/text saving, and notes run in
+the background so transcript exports do not wait for the model. See
+[implementation and user-run checks](docs/notes-background-generation-fix.md).
+
+Latest local integration: `origin/navya` at `5cb95f0` includes Phase 3 persistence
+and Phase 4 workflows, together with the local native-overlay controls. See
+[integration status and user-run checks](docs/navya-integration-2026-11-28.md).
+This combined checkout has not been built or tested after the pull.
+
 Vinxa Desktop is a Windows-only, offline-first meeting memory app. It captures the local microphone and system audio from any meeting application, shows a live transcript in a floating overlay, then saves searchable notes, decisions, and action items locally.
 
 The product is built for a short hackathon sprint. The first objective is a reliable local audio-to-transcript loop. AI notes, polish, and stretch features follow only after that loop works in the packaged app.
@@ -213,12 +222,15 @@ and use headphones for the simultaneous test. No video is saved.
 ## Privacy and data handling
 
 Live audio is processed by the authenticated local speech service after consent.
-This path saves no raw WAV files or permanent transcript history. Consent receipts
-and hotkey settings are stored in Electron's user-data directory. Optional bounded
-diagnostics contain numeric timing/accounting data, not speech text or audio.
-Meeting-app mute does not mute Vinxa's microphone. The opt-in Phase 1 diagnostics
-still save WAV files separately. Persistent history, echo deduplication, the
-broader network guard, deletion, and optional cloud notes remain later work.
+Local sessions save finalized transcripts in SQLite and separate microphone/system
+WAV files under Electron's user-data directory, alongside consent receipts and
+settings. Demo mode uses sample text without capture or saved meeting history.
+Optional bounded diagnostics contain numeric timing/accounting data, not speech
+text or audio. Meeting-app mute does not mute Vinxa's microphone.
+Local-only notes use a configured installed Ollama model. OpenAI notes require
+explicit transcript-sharing consent and provider selection; audio stays local.
+Saved-meeting deletion does not remove exported copies or previously shared cloud
+text, and storage erasure has the limits explained in its confirmation dialog.
 
 ## Delivery order
 

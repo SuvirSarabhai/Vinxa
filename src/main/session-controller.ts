@@ -231,7 +231,7 @@ export class SessionController {
         await this.backend.stop()
         if (this.disposed || !this.hasState('stopping', 'processing')) return
         this.current.levels = { mic: null, system: null }
-        if (!this.hasState('processing')) this.current.notice = 'Session stopped.'
+        if (this.backend.mode === 'demo' && !this.hasState('processing')) this.current.notice = 'Session stopped.'
         this.current.endedAtMs ??= this.clock()
         this.transition('completed')
       } catch (error) {

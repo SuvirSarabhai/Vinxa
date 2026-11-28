@@ -6,6 +6,21 @@ const { dirname, join, resolve } = require('node:path')
 const { _electron } = require('playwright-core')
 const { waitForSnapshot } = require('./smoke-helpers.cjs')
 
+async function waitForOverlay(desktop, predicate) {
+  let latest
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const state = await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((entry) => entry.getTitle() === 'Vinxa Transcript')
+      return { minimized: window.isMinimized(), maximized: window.isMaximized(), visible: window.isVisible(),
+        bounds: window.getBounds(), content: window.getContentBounds(), minimum: window.getMinimumSize() }
+    })
+    latest = state
+    if (predicate(state)) return state
+    await new Promise((resolveWait) => setTimeout(resolveWait, 50))
+  }
+  throw new Error('Native overlay state did not settle: ' + JSON.stringify(latest))
+}
+
 async function main() {
   const profile = await mkdtemp(join(tmpdir(), 'vinxa-stitch-ui-'))
   const artifacts = resolve('release/stitch-ui')
@@ -171,6 +186,33 @@ async function main() {
       'five pause/resume cycles, partial-to-final replacement, speaker labels, consent receipt, transcript clipboard'
     )
 
+    const nativeControls = await desktop.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((entry) => entry.getTitle() === 'Vinxa Transcript')
+      return { minimize: window.isMinimizable(), maximize: window.isMaximizable(), close: window.isClosable(),
+        framed: window.getBounds().height > window.getContentBounds().height }
+    })
+    assert.deepEqual(nativeControls, { minimize: true, maximize: true, close: true, framed: true })
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Vinxa Transcript').minimize())
+    await waitForOverlay(desktop, (state) => state.minimized)
+    await page.getByRole('button', { name: 'Show overlay', exact: true }).click()
+    await waitForOverlay(desktop, (state) => !state.minimized && state.visible)
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Vinxa Transcript').maximize())
+    await waitForOverlay(desktop, (state) => state.maximized)
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Vinxa Transcript').unmaximize())
+    await waitForOverlay(desktop, (state) => !state.maximized)
+    await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => window.getTitle() === 'Vinxa Transcript').close())
+    await waitForOverlay(desktop, (state) => !state.visible)
+    assert.equal((await page.evaluate(() => window.vinxaPhase2.snapshot())).state, 'recording')
+    await page.getByRole('button', { name: 'Pause', exact: true }).click()
+    await waitForSnapshot(page, (value) => value.state === 'paused')
+    await waitForOverlay(desktop, (state) => !state.visible)
+    await page.getByRole('button', { name: 'Resume', exact: true }).click()
+    await waitForSnapshot(page, (value) => value.state === 'recording')
+    await waitForOverlay(desktop, (state) => !state.visible)
+    await page.getByRole('button', { name: 'Show overlay', exact: true }).click()
+    await waitForOverlay(desktop, (state) => state.visible && !state.minimized)
+    pass('native title bar, minimize/restore, maximize/restore, close hides only the overlay, explicit reopen')
+
     const beforeDrag = await desktop.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
         .find((window) => window.getTitle() === 'Vinxa Transcript')
@@ -187,7 +229,9 @@ async function main() {
         screen.getCursorScreenPoint = original
       }
     })
-    const transcript = await overlay.locator('.segment p').first().boundingBox()
+    const dragText = overlay.locator('.segment p').last()
+    await dragText.scrollIntoViewIfNeeded()
+    const transcript = await dragText.boundingBox()
     await overlay.mouse.move(transcript.x + 24, transcript.y + 10)
     await overlay.mouse.down()
     await overlay.mouse.move(transcript.x + 85, transcript.y + 42, { steps: 8 })
@@ -222,6 +266,17 @@ async function main() {
     )
     await overlay.getByRole('button', { name: 'Collapse', exact: true }).click()
     await overlay.getByRole('button', { name: 'Expand', exact: true }).waitFor()
+    // Windows can round between physical pixels and DIP at fractional scaling.
+    // Permit only that small rounding difference, then verify usable controls.
+    await waitForOverlay(desktop, (state) => !state.maximized && !state.minimized &&
+      Math.abs(state.content.height - 130) <= 2)
+    const compactControls = await overlay.locator('.collapsed-controls').boundingBox()
+    assert.ok(compactControls, 'Compact controls must be present')
+    const compactViewport = await overlay.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    assert.ok(compactControls.y >= 0 && compactControls.y + compactControls.height <= compactViewport.height + 1,
+      'Compact Pause, Stop and Expand must fit vertically')
+    assert.ok(compactControls.x >= 0 && compactControls.x + compactControls.width <= compactViewport.width + 1,
+      'Compact controls must fit horizontally')
     assert.equal(await overlay.locator('.overlay-body').count(), 0)
     await overlay.getByRole('button', { name: 'Pause', exact: true }).click()
     await overlay.locator('.status.paused').waitFor()
@@ -264,7 +319,7 @@ async function main() {
     const finished = await page.evaluate(() => window.vinxaPhase2.snapshot())
     assert.equal(typeof finished.startedAtMs, 'number')
     assert.ok(finished.endedAtMs >= finished.startedAtMs)
-    assert.equal(finished.pauses.length, 6)
+    assert.equal(finished.pauses.length, 7)
     await page.getByRole('button', { name: 'Library', exact: true }).click()
     await page.getByRole('button', { name: 'View session', exact: true }).click()
     assert.equal(await page.locator('.segment').count(), 3)

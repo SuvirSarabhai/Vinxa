@@ -44,7 +44,7 @@ export function MeetingDetailView({ detail, command, busy, target }: {
         <h3>Summary</h3><p id={'passage-'+meeting.id} className={'notes-text '+(target?.category==='Summary'?'search-match':'')}>{detail.insights?.summary || (meeting.notesStatus === 'completed' ? 'No summary evidence was found.' : 'Notes are not available yet.')}</p>
         <button disabled={busy || meeting.recordingStatus !== 'completed' || meeting.notesStatus === 'processing'}
           onClick={() => void command({ type: 'notes', id: meeting.id })}>
-          {detail.insights ? 'Regenerate notes' : 'Generate notes'}
+          {meeting.notesStatus === 'processing' ? 'Generating notes…' : detail.insights ? 'Regenerate notes' : 'Generate notes'}
         </button>
         <h3>Speaker names</h3>
         {(['mic', 'system'] as const).map(source => <form key={source} className="meeting-edit" onSubmit={event => {

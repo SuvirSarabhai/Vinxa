@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { NotesProvider, NotesRequest } from '../../shared/meetings'
-import { citedNotesSchema } from './prompts'
+import { notesResponseSchema } from './prompts'
 import { requestJson, ProviderUnavailable } from './http'
 import type { Fetcher } from './http'
 import { guardedFetch } from '../network-guard'
@@ -29,11 +29,13 @@ export class OllamaNotesProvider implements NotesProvider {
     const availability = await this.available()
     if (!availability.available) throw new ProviderUnavailable(availability.message)
     const started = performance.now()
+    const format = z.toJSONSchema(notesResponseSchema(true, request.allowedSourceIds))
     const result = responseSchema.parse(await requestJson(this.fetcher, 'http://127.0.0.1:11434/api/chat', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: this.model, stream: false, think: false, keep_alive: '5m',
-        format: z.toJSONSchema(citedNotesSchema), options: { temperature: 0 },
-        messages: [{ role: 'user', content: request.prompt }] })
+        format, options: { temperature: 0, num_predict: 1024 },
+        messages: [{ role: 'system', content: 'Return only the JSON required by the output schema. Use exact supporting transcript reference strings. Do not output atMs: the app assigns decision timestamps from those references. Keep notes concise; never invent missing evidence.\nRESPONSE SCHEMA\n' + JSON.stringify(format) },
+          { role: 'user', content: request.prompt }] })
     }, this.timeoutMs))
     return { content: result.message.content, metrics: { durationMs: performance.now() - started,
       loadMs: result.load_duration === undefined ? undefined : result.load_duration / 1e6,

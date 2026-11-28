@@ -153,21 +153,38 @@ export function installPhase2(
 
   function overlaySize(): void {
     if (!overlay || overlay.isDestroyed()) return
+    if (overlay.isFullScreen()) { overlay.setFullScreen(false); return }
+    if (overlay.isMaximized()) overlay.unmaximize()
+    const content = overlay.getContentBounds()
+    // Minimum size uses window coordinates; setContentSize requests the usable
+    // client area. Do not add a measured title-bar delta to the minimum: Windows
+    // converts native constraints separately, which can prevent shrinking.
     overlay.setMinimumSize(440, collapsed ? 130 : 360)
-    overlay.setSize(overlay.getBounds().width, collapsed ? 130 : expandedHeight)
+    overlay.setContentSize(Math.max(440, content.width), collapsed ? 130 : expandedHeight)
+  }
+
+  function rememberExpandedHeight(): void {
+    if (!overlay || overlay.isDestroyed()) return
+    const bounds = overlay.getBounds()
+    const content = overlay.getContentBounds()
+    expandedHeight = Math.max(360, overlay.getNormalBounds().height - (bounds.height - content.height))
   }
 
   function showOverlay(): void {
     overlayWanted = true
     if (overlay && !overlay.isDestroyed()) {
-      if (overlayLoaded) overlay.show()
+      if (overlayLoaded) {
+        if (overlay.isMinimized()) overlay.restore()
+        overlay.show()
+      }
       return
     }
     overlayLoaded = false
     overlay = createWindow('overlay', {
-      title: 'Vinxa Transcript', width: 600, height: collapsed ? 130 : expandedHeight,
+      title: 'Vinxa Transcript', width: 600, height: collapsed ? 130 : expandedHeight, useContentSize: true,
       minWidth: 440, minHeight: collapsed ? 130 : 360,
-      frame: false, alwaysOnTop: true, resizable: true, minimizable: false, maximizable: false
+      frame: true, titleBarStyle: 'default', autoHideMenuBar: true, icon: idleIcon,
+      alwaysOnTop: true, resizable: true, minimizable: true, maximizable: true, closable: true, fullscreenable: true
     })
     overlay.setOpacity(opacity)
     overlay.once('ready-to-show', () => {
@@ -181,17 +198,22 @@ export function installPhase2(
     overlay.on('close', (event) => {
       if (disposed) return
       event.preventDefault()
-      const state = controller.snapshot().state
-      if (['recording', 'paused', 'stopping'].includes(state)) {
-        if (!collapsed && overlay) expandedHeight = overlay.getBounds().height
-        collapsed = true
-        overlaySize()
+      overlayWanted = false
+      overlay?.hide()
+    })
+    overlay.on('maximize', () => {
+      if (collapsed) {
+        collapsed = false
         publish()
-      } else {
-        overlayWanted = false
-        overlay?.hide()
       }
     })
+    overlay.on('unmaximize', () => {
+      setImmediate(() => {
+        if (overlay && !overlay.isDestroyed() && !collapsed && overlay.getContentBounds().height < 360) overlaySize()
+      })
+    })
+    overlay.on('leave-full-screen', overlaySize)
+    overlay.on('minimize', () => { dragOrigin = undefined })
     overlay.on('hide', () => { dragOrigin = undefined })
     overlay.on('closed', () => { overlay = undefined; overlayLoaded = false; dragOrigin = undefined })
   }
@@ -265,7 +287,7 @@ export function installPhase2(
         case 'show-overlay': showOverlay(); break
         case 'open-library': openLibrary(); break
         case 'collapse':
-          if (!collapsed && overlay) expandedHeight = overlay.getBounds().height
+          if (!collapsed) rememberExpandedHeight()
           collapsed = !collapsed
           showOverlay()
           overlaySize()
@@ -301,6 +323,7 @@ export function installPhase2(
     const result = overlayDragSchema.safeParse(payload)
     if (!result.success) return
     if (result.data === 'end') { dragOrigin = undefined; return }
+    if (overlay.isMaximized() || overlay.isFullScreen()) { dragOrigin = undefined; return }
     const cursor = screen.getCursorScreenPoint()
     if (result.data === 'start') {
       const bounds = overlay.getBounds()
@@ -323,7 +346,7 @@ export function installPhase2(
   })
   const unsubscribe = controller.subscribe(() => {
     const state = controller.getState()
-    if (state !== lastSessionState && ['recording', 'paused', 'stopping'].includes(state)) showOverlay()
+    if (state === 'recording' && lastSessionState === 'awaiting-consent') showOverlay()
     lastSessionState = state
     publish()
   })

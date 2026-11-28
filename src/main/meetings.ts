@@ -45,8 +45,8 @@ export function installMeetings(window: BrowserWindow, recording: RecordingBacke
   const queue=new NotesQueue(store,notes,changed,()=>!operations.size&&!disposed)
   queue.start()
   void disk.check(2)
-  async function exclusive<T>(id:string,operation:()=>Promise<T>):Promise<T>{
-    if(operations.size||notes.isRunning())throw new Error('Another meeting operation is in progress.')
+  async function exclusive<T>(id:string,operation:()=>Promise<T>,allowNotes=false):Promise<T>{
+    if(operations.size||(!allowNotes&&notes.isRunning()))throw new Error('Another meeting operation is in progress.')
     operations.add(id)
     const work=Promise.resolve().then(operation)
     pendingOperations.add(work)
@@ -80,7 +80,7 @@ export function installMeetings(window: BrowserWindow, recording: RecordingBacke
   handle(ipcChannels.meetingsExport, input => {
     const value=exportRequestSchema.parse(input)
     if(deletionPending(store,value.id))throw new Error('Finish deleting this meeting before another operation.')
-    return exclusive(value.id,()=>exportMeeting(window,store,value.id,value.format))
+    return exclusive(value.id,()=>exportMeeting(window,store,value.id,value.format),true)
   })
   handle(ipcChannels.meetingsDelete, input => {
     const id=meetingIdSchema.parse(input)
@@ -115,7 +115,9 @@ export function installMeetings(window: BrowserWindow, recording: RecordingBacke
       if (command.type === 'rename') store.rename(command.id, command.title)
       else if (command.type === 'speaker') store.renameSpeaker(command.id, command.source, command.name)
       else if (command.type === 'action') store.actionStatus(command.id, command.actionId, command.status)
-      else await notes.generate(command.id)
+      else void notes.generate(command.id).catch(() => {
+        store.notesStatus(command.id, 'failed', 'Notes could not be saved. Retry generation.'); changed()
+      })
       changed()
       return store.get(command.id)
     })

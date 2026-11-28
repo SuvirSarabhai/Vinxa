@@ -27,6 +27,8 @@ describe('notes providers (mock HTTP)', () => {
     const body = JSON.parse(String(fetcher.mock.calls.at(-1)![1]!.body))
     expect(body.format.type).toBe('object')
     expect(body.stream).toBe(false)
+    expect(body.options.num_predict).toBe(1024)
+    expect(body.format.properties.decisions.items.required).not.toContain('atMs')
     expect(fetcher.mock.calls.every(call => String(call[0]).startsWith('http://127.0.0.1:11434/'))).toBe(true)
   })
   it('reports unavailable service and missing local model without cloud fallback', async () => {
@@ -34,6 +36,17 @@ describe('notes providers (mock HTTP)', () => {
     expect((await new OllamaNotesProvider('missing', 1000, fetcher).available()).available).toBe(false)
     fetcher.mockRejectedValueOnce(new Error('connection refused'))
     expect((await new OllamaNotesProvider('local', 1000, fetcher).available()).message).toContain('unavailable')
+  })
+  it('restricts Ollama citations to this request and grounds the prompt with its schema', async () => {
+    const fetcher = fetchJson({ models: [{ name: 'local:latest' }] })
+    fetcher.mockResolvedValueOnce(Response.json({ models: [{ name: 'local:latest' }] }))
+    fetcher.mockResolvedValueOnce(Response.json({ message: { content: JSON.stringify(insights) }, done: true }))
+    await new OllamaNotesProvider('local', 1000, fetcher).generate({ prompt: 'evidence', allowedSourceIds: ['1', '3'] })
+    const body = JSON.parse(String(fetcher.mock.calls.at(-1)![1]!.body))
+    expect(body.format.properties.summarySourceId).toMatchObject({ type: 'string', enum: ['1', '3'] })
+    expect(body.format.properties.decisions.items.properties.sourceId.enum).toEqual(['1', '3'])
+    expect(body.format.properties.actionItems.items.properties.sourceId.enum).toEqual(['1', '3'])
+    expect(body.messages[0].content).toContain(JSON.stringify(body.format))
   })
   it('never calls OpenAI when cloud notes are disabled, including direct generate', async () => {
     const fetcher = fetchJson({})
@@ -59,6 +72,15 @@ describe('notes providers (mock HTTP)', () => {
   it.each([401,429,500])('handles provider HTTP %s', async status => {
     const target = new OpenAINotesProvider('model', () => 'test-key', () => true, 1000, fetchJson({}, status))
     await expect(target.generate({ prompt: 'text' })).rejects.toThrow('provider')
+  })
+  it('restricts opted-in OpenAI citations to the supplied evidence IDs', async () => {
+    const fetcher = fetchJson({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(insights) }] }] })
+    await new OpenAINotesProvider('model', () => 'test-key', () => true, 1000, fetcher)
+      .generate({ prompt: 'evidence', allowedSourceIds: ['1', '3'] })
+    const schema = JSON.parse(String(fetcher.mock.calls[0][1]!.body)).text.format.schema
+    expect(schema.properties.summarySourceId.enum).toEqual(['1', '3'])
+    expect(schema.properties.decisions.items.properties.sourceId.enum).toEqual(['1', '3'])
+    expect(schema.properties.actionItems.items.properties.sourceId.enum).toEqual(['1', '3'])
   })
   it('handles timeouts and malformed provider envelopes', async () => {
     const fetcher = vi.fn<typeof fetch>().mockRejectedValue(new DOMException('deadline', 'TimeoutError'))
@@ -90,6 +112,62 @@ describe('notes pipeline (mock model)', () => {
     const model = provider('{"summary":"unsupported"}')
     const result = await generateNotes(model, [segment], 6000)
     expect(result.status).toBe('failed'); expect(result.insights).toBeUndefined()
+    expect(model.generate).toHaveBeenCalledTimes(2)
+  })
+  it('derives missing local decision timestamps from verified evidence without an extra model call', async () => {
+    const model = provider(JSON.stringify({ ...insights, decisions: [{ text: 'Review tomorrow', sourceId: '1' }] }))
+    const result = await generateNotes(model, [segment], 6000)
+    expect(result.status).toBe('completed')
+    expect(result.insights?.decisions[0].atMs).toBe(segment.startMs)
+    expect(result.sources?.decisions).toEqual([segment.id])
+    expect(model.generate).toHaveBeenCalledOnce()
+  })
+  it('rejects missing timestamps attached to unknown evidence references', async () => {
+    const model = provider(JSON.stringify({ ...insights, decisions: [{ text: 'Unsupported', sourceId: 'unknown' }] }))
+    const result = await generateNotes(model, [segment], 6000)
+    expect(result.status).toBe('failed')
+    expect(result.insights).toBeUndefined()
+  })
+  it.each([
+    { ...insights, summarySourceId: null },
+    { ...insights, summarySourceId: 'unknown' }
+  ])('identifies a missing or invalid summary reference and its generation stage', async value => {
+    const model = provider(JSON.stringify(value))
+    const result = await generateNotes(model, [segment], 6000)
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain('chunk-1')
+    expect(result.message).toContain('summarySourceId')
+    expect(model.generate).toHaveBeenCalledTimes(2)
+    expect(model.generate.mock.calls[1][0].prompt).toContain('ALLOWED_REFERENCE_IDS_JSON\n["1"]')
+  })
+  it.each(['decisions', 'actionItems'] as const)('identifies an invalid %s citation without accepting unsupported notes', async field => {
+    const value = { ...insights, [field]: insights[field].map(item => ({ ...item, sourceId: 'unknown' })) }
+    const result = await generateNotes(provider(JSON.stringify(value)), [segment], 6000)
+    expect(result.status).toBe('failed')
+    expect(result.message).toContain(`${field}.0.sourceId`)
+    expect(result.insights).toBeUndefined()
+  })
+  it('discards an unused empty-summary reference while preserving supported actions', async () => {
+    const result = await generateNotes(provider(JSON.stringify({ ...insights, summary: '', summarySourceId: 'unused' })), [segment], 6000)
+    expect(result.status).toBe('completed')
+    expect(result.sources?.summary).toBeNull()
+    expect(result.sources?.actions).toEqual([segment.id])
+  })
+  it('skips consolidation of empty notes instead of requesting notes without evidence', async () => {
+    const model = provider(JSON.stringify({ summary: '', summarySourceId: null, decisions: [], actionItems: [] }))
+    const result = await generateNotes(model, [segment, { ...segment, id: 'b' }, { ...segment, id: 'c' }], 50)
+    expect(result.status).toBe('completed')
+    expect(result.insights).toEqual({ summary: '', decisions: [], actionItems: [] })
+    expect(model.generate).toHaveBeenCalledTimes(3)
+  })
+  it('retains supported notes without consolidating an empty partner', async () => {
+    const model = provider(JSON.stringify({ ...insights, summarySourceId: '2',
+      decisions: insights.decisions.map(item => ({ ...item, sourceId: '2' })),
+      actionItems: insights.actionItems.map(item => ({ ...item, sourceId: '2' })) }))
+    model.generate.mockResolvedValueOnce({ content: JSON.stringify({ summary: '', summarySourceId: null, decisions: [], actionItems: [] }), metrics: { durationMs: 1 } })
+    const result = await generateNotes(model, [segment, { ...segment, id: 'b' }], 50)
+    expect(result.status).toBe('completed')
+    expect(result.sources?.summary).toBe('b')
     expect(model.generate).toHaveBeenCalledTimes(2)
   })
   it('retries malformed response envelopes once and does not retry network failures', async () => {
@@ -125,6 +203,9 @@ describe('notes pipeline (mock model)', () => {
     const result = await generateNotes(model, [segment, { ...segment, id: 'b' }, { ...segment, id: 'c' }], 50)
     expect(result.status).toBe('completed')
     expect(model.generate).toHaveBeenCalledTimes(5)
+    expect(model.generate.mock.calls.map(([request]) => request.allowedSourceIds)).toEqual([
+      ['1'], ['2'], ['3'], ['1', '2'], ['1', '3']
+    ])
     expect(result.metrics.filter(m => m.phase.startsWith('chunk'))).toHaveLength(3)
     expect(result.insights?.actionItems[0].owner).toBeNull()
   })
