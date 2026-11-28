@@ -25,13 +25,19 @@ def test_selects_only_a_complete_explicit_converted_model(tmp_path):
 def test_model_lookup_uses_only_the_existing_cache(monkeypatch, tmp_path):
     directory = model_files(tmp_path / "model")
     calls = []
-    def snapshot_download(**kwargs):
+    def try_to_load_from_cache(**kwargs):
         calls.append(kwargs)
-        return str(directory)
-    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(snapshot_download=snapshot_download))
+        return str(directory / "model.bin")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", SimpleNamespace(try_to_load_from_cache=try_to_load_from_cache))
     monkeypatch.setattr("sidecar.engine.model_cache", lambda: tmp_path / "cache")
     assert selected_model("base.en") == directory.resolve()
-    assert calls == [{"repo_id": "Systran/faster-whisper-base.en", "cache_dir": str(tmp_path / "cache"), "local_files_only": True}]
+    assert calls == [{"repo_id": "Systran/faster-whisper-base.en", "filename": "model.bin", "cache_dir": str(tmp_path / "cache")}]
+
+
+def test_missing_cached_model_reports_setup_error(monkeypatch):
+    monkeypatch.setattr("huggingface_hub.try_to_load_from_cache", lambda **kwargs: None)
+    with pytest.raises(ValueError, match="missing from the cache"):
+        selected_model("base.en")
 
 
 def test_frozen_build_includes_schema_vad_native_libraries_and_metadata():
