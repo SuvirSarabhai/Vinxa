@@ -47,7 +47,7 @@ export type CaptureFrameDiagnostics = z.infer<typeof captureFrameDiagnosticsSche
 
 export interface CaptureBridge {
   clockSync?(clientSendMs: number): Promise<{ mainReceiveMs: number; mainSendMs: number; sessionStartMs: number }>
-  ready(): Promise<void>
+  ready(deviceId?:string): Promise<void>
   frame(frame: ArrayBuffer, metadata?: AudioFrameMetadata, diagnostics?: CaptureFrameDiagnostics): Promise<void>
   finished(result: { error: string | null; paddedSamples: number }): Promise<void>
   onStop(listener: () => void): () => void

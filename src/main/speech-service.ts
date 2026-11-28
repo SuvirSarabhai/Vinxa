@@ -5,7 +5,7 @@ import { ipcChannels } from '../shared/ipc-channels'
 import type { SidecarStatus, SidecarError, TranscriptSegment } from '../shared/contracts'
 import type { RecordingOwner } from './recording-speech-bridge'
 import { RecordingSpeechBridge, setWarmBridgeFactory } from './recording-speech-bridge'
-import { SidecarManager, SidecarOperationError, resolveSidecarRuntime } from './sidecar-manager'
+import { SidecarManager, SidecarOperationError, resolveSidecarRuntime, installedSpeechModel } from './sidecar-manager'
 import type { SidecarRuntime } from './sidecar-manager'
 
 let cachedStatus: SidecarStatus | undefined
@@ -105,7 +105,7 @@ export class SpeechService {
 let appSpeech: SpeechService | undefined
 export function getAppSpeech(): SpeechService | undefined { return appSpeech }
 
-export async function initializeAppSpeech(window: BrowserWindow): Promise<void> {
+export async function initializeAppSpeech(window: BrowserWindow, preference = 'default'): Promise<void> {
   try {
     if (!statusHandlerRegistered) {
       ipcMain.handle(ipcChannels.engineStatusGet, (event) => {
@@ -116,10 +116,16 @@ export async function initializeAppSpeech(window: BrowserWindow): Promise<void> 
     }
     if (appSpeech) { await appSpeech.initialize(); return }
     const sourceRoot = process.env.VINXA_SIDECAR_SOURCE ?? app.getAppPath()
+    const model = preference === 'default' ? (process.env.VINXA_SPEECH_MODEL || 'base.en') : preference
     const runtime = resolveSidecarRuntime({ appPath: sourceRoot,
       resourcesPath: process.resourcesPath, packaged: app.isPackaged && !process.env.VINXA_SIDECAR_SOURCE },
-      process.env.VINXA_SIDECAR_PYTHON)
-    appSpeech = new SpeechService(runtime, window, process.env.VINXA_SPEECH_MODEL ?? 'base.en',
+      process.env.VINXA_SIDECAR_PYTHON, model)
+    if (preference !== 'default') {
+      const path = installedSpeechModel(process.resourcesPath, model)
+      if (!path) throw new Error('Selected speech model is no longer installed.')
+      runtime.env = { ...runtime.env, VINXA_SPEECH_MODEL_PATH: path }
+    }
+    appSpeech = new SpeechService(runtime, window, model,
       process.env.VINXA_SPEECH_LANGUAGE ?? 'en')
     setWarmBridgeFactory((owner, target) => appSpeech!.createBridge(owner, target))
     await appSpeech.initialize()

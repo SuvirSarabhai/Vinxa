@@ -23,6 +23,16 @@ function harness(saveConsent = vi.fn<(record: ConsentRecord) => Promise<void>>()
 }
 
 describe('SessionController', () => {
+  it('clears the deleted meeting from snapshots and preserves an open consent request', async () => {
+    const {controller,sessionId} = harness()
+    controller.requestStart()
+    await controller.confirm(config, true)
+    await controller.stop()
+    controller.requestStart()
+    const request = controller.snapshot().consentRequest
+    controller.forgetDeletedMeeting(sessionId())
+    expect(controller.snapshot()).toMatchObject({state:'awaiting-consent',sessionId:null,segments:[],consentRequest:request,config:{title:'New meeting'}})
+  })
   it('publishes real session times, retains the clock through pauses, and freezes it on Stop', async () => {
     const target = harness()
     target.controller.requestStart()

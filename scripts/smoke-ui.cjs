@@ -10,7 +10,9 @@ async function main() {
   const profile = await mkdtemp(join(tmpdir(), 'vinxa-stitch-ui-'))
   const artifacts = resolve('release/stitch-ui')
   await mkdir(artifacts, { recursive: true })
-  const testBindings = { start: 'Ctrl+Alt+7', pause: 'Ctrl+Alt+8', stop: 'Ctrl+Alt+9' }
+  const testBindings = process.env.VINXA_SMOKE_HOTKEYS
+    ? JSON.parse(process.env.VINXA_SMOKE_HOTKEYS)
+    : { start: 'Ctrl+Alt+7', pause: 'Ctrl+Alt+8', stop: 'Ctrl+Alt+9' }
   await writeFile(join(profile, 'phase2-hotkeys.json'), JSON.stringify(testBindings))
   const environment = { ...process.env, VINXA_BACKEND: 'demo', VINXA_SMOKE_USER_DATA: profile }
   for (const key of [
@@ -64,7 +66,7 @@ async function main() {
     await page.screenshot({ path: join(artifacts, 'library-empty.png'), fullPage: true })
     await page.getByRole('button', { name: 'Settings', exact: true }).click()
     const startShortcut = page.getByRole('textbox', { name: 'Start shortcut', exact: true })
-    await startShortcut.fill('Ctrl+Alt+8')
+    await startShortcut.fill(testBindings.pause)
     await page.getByRole('button', { name: 'Save shortcuts', exact: true }).click()
     await page.getByRole('alert').filter({ hasText: 'Each action needs a different shortcut' }).waitFor()
     await page.getByRole('button', { name: 'Reset to defaults', exact: true }).click()
@@ -86,7 +88,7 @@ async function main() {
     await page.getByRole('textbox', { name: 'Pause / Resume shortcut', exact: true }).fill(testBindings.pause)
     await page.getByRole('textbox', { name: 'Stop shortcut', exact: true }).fill(testBindings.stop)
     await page.getByRole('button', { name: 'Save shortcuts', exact: true }).click()
-    await waitForSnapshot(page, (value) => value.hotkeys.start === 'Ctrl+Alt+7')
+    await waitForSnapshot(page, (value) => value.hotkeys.start === testBindings.start)
     await page.screenshot({ path: join(artifacts, 'settings.png'), fullPage: true })
     pass('library empty state, shortcut validation, persistence, native registration, reset')
     await page.getByRole('button', { name: 'Dashboard', exact: true }).click()

@@ -25,6 +25,8 @@ test_recordings/
 *.wav
 *.db
 *.db-*
+*.sqlite3
+*.sqlite3-*
 
 # Local tooling and generated review artifacts
 tmp/

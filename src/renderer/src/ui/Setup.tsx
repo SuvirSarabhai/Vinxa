@@ -113,7 +113,7 @@ export function Setup({
               />
               <Icon name="mic" />
               <span>Include microphone</span>
-              <small>Inactive</small>
+            <small>Inactive</small>
             </label>
             <label className="check">
               <input
@@ -137,7 +137,7 @@ export function Setup({
               <p>
                 {snapshot.mode === 'demo'
                   ? 'The sample runs locally without opening audio devices.'
-                  : 'Selected audio is transcribed on this laptop. Raw audio and permanent meeting history are not saved in this mode.'}
+                  : 'Selected audio and transcripts are saved on this laptop. Microphone and system audio are stored separately. Cloud notes use transcript text only when enabled in Settings.'}
               </p>
               <p>
                 <strong>Meeting-app mute does not mute Vinxa.</strong> Nearby voices can be captured. Use

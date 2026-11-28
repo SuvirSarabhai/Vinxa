@@ -8,7 +8,7 @@ export function floatToInt16(sample: number): number {
 
 export const defaultMicrophoneGain = 0.75
 
-export class MicrophoneGainError extends Error {}
+export class MicrophoneGainError extends Error { }
 
 export function parseMicrophoneGain(value: unknown = defaultMicrophoneGain): number {
   const gain = typeof value === 'number' ? value
@@ -46,9 +46,11 @@ export class PcmEncoder {
     if (!Number.isFinite(inputRate) || inputRate < 8000 || inputRate > 192000) {
       throw new Error('Input sample rate must be between 8000 and 192000 Hz')
     }
-    this.measurements = { gain: source === 0 ? parseMicrophoneGain(microphoneGain) : 1,
+    this.measurements = {
+      gain: source === 0 ? parseMicrophoneGain(microphoneGain) : 1,
       inputSamples: 0, inputPeak: 0, inputFullScaleSamples: 0,
-      preGainSamples: 0, preGainPeak: 0, preGainFullScaleSamples: 0, outputFullScaleSamples: 0 }
+      preGainSamples: 0, preGainPeak: 0, preGainFullScaleSamples: 0, outputFullScaleSamples: 0
+    }
     new Uint8Array(this.frame)[0] = source
   }
 
@@ -71,8 +73,6 @@ export class PcmEncoder {
         mono += sample / channels.length
       }
       if (!Number.isFinite(mono)) throw new Error('PCM samples must be finite')
-      // The audio graph can already supply 16 kHz. Avoid running a sinc filter
-      // (and thousands of trigonometric operations per quantum) in that case.
       if (this.inputRate === pcmFormat.sampleRate) {
         this.inputSamples++
         this.writeSample(mono)

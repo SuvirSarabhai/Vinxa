@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, globalShortcut, ipcMain, Menu, nativeImage, screen } from 'electron'
 import type { Tray } from 'electron'
-import { appendFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import {
@@ -12,6 +12,9 @@ import { SessionController } from './session-controller'
 import { ShortcutBindings } from './hotkeys'
 import { createDemoBackend } from './demo-backend'
 import { createSpeechBackend } from './speech-backend'
+import type { MeetingStore } from './db/repository'
+import { saveConsent } from './consent-log'
+import { installMeetings } from './meetings'
 
 function statusIcon(red: number, green: number, blue: number): Electron.NativeImage {
   const size = 16
@@ -30,6 +33,7 @@ export function installPhase2(
   library: BrowserWindow,
   tray: Tray,
   openLibrary: () => void,
+  store?: MeetingStore,
   backend: RecordingBackend = process.env.VINXA_BACKEND === 'demo' ? createDemoBackend() : createSpeechBackend(library)
 ): () => Promise<void> {
   let overlay: BrowserWindow | undefined
@@ -56,16 +60,13 @@ export function installPhase2(
   let dragOrigin: { cursorX: number; cursorY: number; windowX: number; windowY: number } | undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'phase2-hotkeys.json')
-  const consentFile = join(userData, 'consent-events.jsonl')
   const idleIcon = nativeImage.createFromPath(app.isPackaged
     ? join(process.resourcesPath, 'tray.ico')
     : join(app.getAppPath(), 'resources', 'tray.ico'))
   const redIcon = statusIcon(239, 68, 68)
   const amberIcon = statusIcon(245, 158, 11)
-  const controller = new SessionController(backend, async (record) => {
-    await mkdir(userData, { recursive: true })
-    await appendFile(consentFile, JSON.stringify(record) + '\n', 'utf8')
-  })
+  const meetings = store ? installMeetings(library, backend, store, id => controller.forgetDeletedMeeting(id)) : undefined
+  const controller: SessionController = new SessionController(meetings?.backend ?? backend, record => saveConsent(userData, record))
   const shortcuts = new ShortcutBindings(globalShortcut, (action) => {
     const commands: Record<keyof Hotkeys, Phase2Command> = {
       start: { type: 'start' }, pause: { type: 'pause-resume' }, stop: { type: 'stop' }
@@ -256,6 +257,7 @@ export function installPhase2(
           break
         case 'cancel': controller.cancel(); setup?.close(); break
         case 'pause-resume': await controller.pauseResume(); break
+        case 'select-microphone': await controller.selectMicrophone(command.deviceId); break
         case 'stop':
           await controller.stop()
           if (controller.snapshot().state === 'idle') setup?.close()
@@ -355,6 +357,7 @@ export function installPhase2(
       ipcMain.removeHandler(phase2Channels.command)
       ipcMain.removeHandler(phase2Channels.snapshot)
       ipcMain.removeListener(phase2Channels.overlayDrag, onOverlayDrag)
+      await meetings?.close()
     }
   }
 }
